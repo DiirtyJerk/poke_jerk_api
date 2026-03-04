@@ -1,0 +1,30 @@
+name: poke_jerk_api
+description: "Pokédex Flutter avec PokeAPI GraphQL."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  graphql_flutter: ^5.2.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  provider: ^6.1.2
+  cached_network_image: ^3.4.1
+  diacritic: ^0.1.5
+  package_info_plus: ^8.1.3
+  flutter_speed_dial: ^7.0.0
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.13
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

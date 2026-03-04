@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze)",
+      "Bash(curl -s 'https://beta.pokeapi.co/graphql/v1beta' -H 'Content-Type: application/json' -d '{\"\"query\"\":\"\"{ __type\\(name: \\\\\"\"pokemon_v2_pokemonitem\\\\\"\"\\) { fields { name } } }\"\"}')",
+      "Bash(curl -s 'https://beta.pokeapi.co/graphql/v1beta' -H 'Content-Type: application/json' -d '{\"\"query\"\":\"\"{ __type\\(name: \\\\\"\"pokemon_v2_version\\\\\"\"\\) { fields { name } } }\"\"}')",
+      "Bash(curl -s -X POST https://beta.pokeapi.co/graphql/v1beta -H \"Content-Type: application/json\" -d '{\"\"query\"\":\"\"{ pokemon_v2_pokemonspecies\\(where: {id: {_in: [37, 38]}}\\) { id name pokemon_v2_pokemons\\(order_by: {id: asc}\\) { id is_default pokemon_v2_pokemonforms\\(limit: 1\\) { form_name } } } }\"\"}')",
+      "Bash(python3 -m json.tool)"
+    ]
+  }
+}
