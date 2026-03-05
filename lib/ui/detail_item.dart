@@ -2,13 +2,17 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
+import 'package:poke_jerk_api/model/global_filter.dart';
+import 'package:poke_jerk_api/model/pokedex_filter_data.dart';
 import 'package:poke_jerk_api/model/type_pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/detail_move.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
+import 'package:poke_jerk_api/ui/widgets/filter_bottom_sheet.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
+import 'package:poke_jerk_api/ui/widgets/version_group_chip.dart';
 import 'package:provider/provider.dart';
 
 class DetailItem extends StatelessWidget {
@@ -47,11 +51,21 @@ class DetailItem extends StatelessWidget {
   }
 }
 
-class _DetailContent extends StatelessWidget {
+class _DetailContent extends StatefulWidget {
   final Map<String, dynamic> data;
   final String language;
 
   const _DetailContent({required this.data, required this.language});
+
+  @override
+  State<_DetailContent> createState() => _DetailContentState();
+}
+
+class _DetailContentState extends State<_DetailContent> {
+  VersionGroup? _localVersionGroup;
+
+  String get language => widget.language;
+  Map<String, dynamic> get data => widget.data;
 
   String _localizedName(List? raw) {
     if (raw == null) return '';
@@ -67,6 +81,11 @@ class _DetailContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final filter = context.watch<GlobalFilterProvider>();
+    final activeVg = _localVersionGroup ?? filter.selectedVersionGroup;
+    final activeVersionIds = activeVg?.versionIds ?? [];
+    final activeVgId = activeVg?.id;
+
     final identifier = data['name'] as String;
     final cost = data['cost'] as int? ?? 0;
     final flingPower = data['fling_power'] as int?;
@@ -146,6 +165,7 @@ class _DetailContent extends StatelessWidget {
       final versionName = versionData != null
           ? _localizedName(versionData['pokemon_v2_versionnames'] as List?)
           : '';
+      final versionIdentifier = versionData?['name'] as String? ?? '';
 
       holdEntries.add(_HoldEntry(
         pokemonId: pkmnId,
@@ -154,14 +174,22 @@ class _DetailContent extends StatelessWidget {
         rarity: pi['rarity'] as int? ?? 0,
         versionName: versionName,
         versionId: versionData?['id'] as int? ?? 0,
+        versionIdentifier: versionIdentifier,
       ));
     }
 
-    // Group by pokemon, then list versions
-    final holdByPokemon = <int, List<_HoldEntry>>{};
-    for (final h in holdEntries) {
-      holdByPokemon.putIfAbsent(h.pokemonId, () => []).add(h);
+    // Filter held entries by active version
+    final filteredHoldEntries = activeVersionIds.isNotEmpty
+        ? holdEntries.where((h) => activeVersionIds.contains(h.versionId)).toList()
+        : holdEntries;
+
+    // Group hold entries by version identifier, then by pokemon
+    final holdByVersion = <String, List<_HoldEntry>>{};
+    for (final h in filteredHoldEntries) {
+      holdByVersion.putIfAbsent(h.versionIdentifier, () => []).add(h);
     }
+    final sortedHoldVersions = holdByVersion.entries.toList()
+      ..sort((a, b) => a.value.first.versionId.compareTo(b.value.first.versionId));
 
     // Machines (TM/HM)
     final machines = data['pokemon_v2_machines'] as List? ?? [];
@@ -173,6 +201,7 @@ class _DetailContent extends StatelessWidget {
       final moveType = moveData['pokemon_v2_type'] as Map<String, dynamic>?;
 
       final vgData = m['pokemon_v2_versiongroup'] as Map<String, dynamic>?;
+      final vgId = vgData?['id'] as int? ?? 0;
       final versionNames = <String>[];
       if (vgData != null) {
         for (final v in (vgData['pokemon_v2_versions'] as List? ?? [])) {
@@ -187,8 +216,14 @@ class _DetailContent extends StatelessWidget {
         moveName: moveName,
         moveType: moveType != null ? TypePokemon.fromJson(moveType) : null,
         versions: versionNames.join(' / '),
+        versionGroupId: vgId,
       ));
     }
+
+    // Filter machines by active version group
+    final filteredMachines = activeVgId != null
+        ? machineEntries.where((m) => m.versionGroupId == activeVgId).toList()
+        : machineEntries;
 
     final spriteUrl =
         'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/$identifier.png';
@@ -196,7 +231,7 @@ class _DetailContent extends StatelessWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // Header
+          // ── Header ──
           SliverAppBar(
             expandedHeight: 180,
             pinned: true,
@@ -278,7 +313,7 @@ class _DetailContent extends StatelessWidget {
             ),
           ),
 
-          // Description
+          // ── Description ──
           if (flavorText.isNotEmpty || effectText.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -297,7 +332,7 @@ class _DetailContent extends StatelessWidget {
               ),
             ),
 
-          // Stats row
+          // ── Stats row ──
           if (cost > 0 || flingPower != null)
             SliverToBoxAdapter(
               child: Padding(
@@ -314,11 +349,10 @@ class _DetailContent extends StatelessWidget {
               ),
             ),
 
-          // Generations
+          // ── Generations ──
           if (generations.isNotEmpty) ...[
             _SectionHeader(
               title: language == 'fr' ? 'Disponible depuis' : 'Available since',
-              color: Colors.teal,
             ),
             SliverToBoxAdapter(
               child: Padding(
@@ -343,16 +377,166 @@ class _DetailContent extends StatelessWidget {
             ),
           ],
 
-          // TM/HM
-          if (machineEntries.isNotEmpty) ...[
+          // ── Version selector (centered chip, same style as VersionSelectorButton) ──
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Center(
+                child: GestureDetector(
+                  onTap: () => _showVersionPicker(context, filter),
+                  child: activeVg != null
+                      ? VersionGroupChip(
+                          label: activeVg.getName(language),
+                          versionIdentifiers: activeVg.versionIdentifiers,
+                        )
+                      : Chip(
+                          avatar: const Icon(Icons.sports_esports_outlined, size: 16, color: Colors.black87),
+                          label: Text(
+                            language == 'fr' ? 'Version' : 'Version',
+                            style: const TextStyle(fontSize: 12, color: Colors.black87),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          side: const BorderSide(color: Color(0xFFDDDDDD)),
+                        ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Obtention: Purchase ──
+          if (cost > 0) ...[
+            _SectionHeader(
+              title: language == 'fr' ? 'Achat' : 'Purchase',
+              icon: Icons.storefront_outlined,
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Card(
+                  elevation: 0,
+                  color: Colors.teal.shade50,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        Icon(Icons.shopping_bag_outlined, size: 20, color: Colors.teal.shade700),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            language == 'fr'
+                                ? 'Disponible en boutique'
+                                : 'Available in shops',
+                            style: TextStyle(fontSize: 13, color: Colors.teal.shade800),
+                          ),
+                        ),
+                        Text(
+                          '$cost ₽',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
+          // ── Obtention: Held by wild Pokemon ──
+          if (filteredHoldEntries.isNotEmpty) ...[
+            _SectionHeader(
+              title: language == 'fr'
+                  ? 'Tenu par des Pokémon sauvages (${_uniquePokemonCount(filteredHoldEntries)})'
+                  : 'Held by wild Pokémon (${_uniquePokemonCount(filteredHoldEntries)})',
+              icon: Icons.catching_pokemon,
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: Column(
+                  children: sortedHoldVersions.map((entry) {
+                    final versionId = entry.key;
+                    final entries = entry.value;
+                    final bgColor = ColorBuilder.getVersionColor(versionId);
+                    final textColor = ColorBuilder.getVersionTextColor(versionId);
+                    final versionLabel = entries.first.versionName;
+
+                    // Group by pokemon within this version
+                    final byPokemon = <int, List<_HoldEntry>>{};
+                    for (final h in entries) {
+                      byPokemon.putIfAbsent(h.pokemonId, () => []).add(h);
+                    }
+
+                    return Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        initiallyExpanded: activeVgId != null,
+                        tilePadding: const EdgeInsets.only(left: 0, right: 8, top: 4),
+                        childrenPadding: EdgeInsets.zero,
+                        title: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: bgColor,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$versionLabel (${byPokemon.length})',
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                        children: byPokemon.entries.map((pkmnEntry) {
+                          final pkmnId = pkmnEntry.key;
+                          final pkmnEntries = pkmnEntry.value;
+                          final first = pkmnEntries.first;
+                          final pkmnName = first.pokemonNames[language == 'fr' ? 5 : 9] ??
+                              first.pokemonNames[9] ??
+                              '';
+                          return _HoldPokemonTile(
+                            pokemonId: pkmnId,
+                            name: pkmnName,
+                            types: first.types,
+                            rarity: first.rarity,
+                            language: language,
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ] else if (holdEntries.isNotEmpty && activeVgId != null) ...[
+            _SectionHeader(
+              title: language == 'fr' ? 'Tenu par des Pokémon sauvages' : 'Held by wild Pokémon',
+              icon: Icons.catching_pokemon,
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  language == 'fr'
+                      ? 'Aucun Pokémon ne tient cet objet dans ${activeVg!.getName(language)}'
+                      : 'No Pokémon holds this item in ${activeVg!.getName(language)}',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ),
+          ],
+
+          // ── TM/HM ──
+          if (filteredMachines.isNotEmpty) ...[
             _SectionHeader(
               title: language == 'fr' ? 'CT / CS' : 'TM / HM',
-              color: Colors.teal,
+              icon: Icons.album_outlined,
             ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final m = machineEntries[index];
+                  final m = filteredMachines[index];
                   final typeColor = m.moveType != null
                       ? ColorBuilder.getTypeColor(m.moveType!)
                       : Colors.grey;
@@ -363,46 +547,33 @@ class _DetailContent extends StatelessWidget {
                       decoration: BoxDecoration(color: typeColor, shape: BoxShape.circle),
                     ),
                     title: Text('CT${m.number.toString().padLeft(2, '0')} — ${m.moveName}'),
-                    subtitle: Text(m.versions,
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                    subtitle: activeVgId != null
+                        ? null
+                        : Text(m.versions,
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => DetailMove(moveId: m.moveId)),
                     ),
                   );
                 },
-                childCount: machineEntries.length,
+                childCount: filteredMachines.length,
               ),
             ),
-          ],
-
-          // Pokemon holding
-          if (holdByPokemon.isNotEmpty) ...[
+          ] else if (machineEntries.isNotEmpty && activeVgId != null) ...[
             _SectionHeader(
-              title: language == 'fr'
-                  ? 'Tenu par des Pokémon sauvages (${holdByPokemon.length})'
-                  : 'Held by wild Pokémon (${holdByPokemon.length})',
-              color: Colors.teal,
+              title: language == 'fr' ? 'CT / CS' : 'TM / HM',
+              icon: Icons.album_outlined,
             ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final pkmnId = holdByPokemon.keys.elementAt(index);
-                  final entries = holdByPokemon[pkmnId]!;
-                  final first = entries.first;
-                  final pkmnName = first.pokemonNames[language == 'fr' ? 5 : 9] ??
-                      first.pokemonNames[9] ??
-                      '';
-
-                  return _HoldPokemonTile(
-                    pokemonId: pkmnId,
-                    name: pkmnName,
-                    types: first.types,
-                    entries: entries,
-                    language: language,
-                  );
-                },
-                childCount: holdByPokemon.length,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  language == 'fr'
+                      ? 'Aucune CT/CS dans ${activeVg!.getName(language)}'
+                      : 'No TM/HM in ${activeVg!.getName(language)}',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                ),
               ),
             ),
           ],
@@ -412,13 +583,60 @@ class _DetailContent extends StatelessWidget {
       ),
     );
   }
+
+  int _uniquePokemonCount(List<_HoldEntry> entries) {
+    return entries.map((e) => e.pokemonId).toSet().length;
+  }
+
+  void _showVersionPicker(BuildContext context, GlobalFilterProvider filter) {
+    if (!filter.filtersLoaded || filter.versionGroups.isEmpty) return;
+    final activeVg = _localVersionGroup ?? filter.selectedVersionGroup;
+
+    showFilterBottomSheet(
+      context: context,
+      title: language == 'fr' ? 'Filtrer par version' : 'Filter by version',
+      language: language,
+      showClear: activeVg != null,
+      onClear: () => setState(() => _localVersionGroup = null),
+      builder: (scrollController) {
+        return ListView.separated(
+          controller: scrollController,
+          itemCount: filter.versionGroups.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (_, index) {
+            final g = filter.versionGroups[index];
+            final isSelected = activeVg?.id == g.id;
+            return AnimatedOpacity(
+              opacity: activeVg != null && !isSelected ? 0.5 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _localVersionGroup = g);
+                },
+                child: VersionGroupChip(
+                  label: g.getName(language),
+                  versionIdentifiers: g.versionIdentifiers,
+                  fillWidth: true,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared widgets
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final Color color;
+  final IconData? icon;
 
-  const _SectionHeader({required this.title, required this.color});
+  const _SectionHeader({required this.title, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -427,8 +645,14 @@ class _SectionHeader extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Row(
           children: [
-            Container(width: 4, height: 18, margin: const EdgeInsets.only(right: 8), color: color),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Container(width: 4, height: 18, margin: const EdgeInsets.only(right: 8), color: Colors.teal),
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: Colors.teal.shade700),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
           ],
         ),
       ),
@@ -466,14 +690,14 @@ class _HoldPokemonTile extends StatelessWidget {
   final int pokemonId;
   final String name;
   final List<TypePokemon> types;
-  final List<_HoldEntry> entries;
+  final int rarity;
   final String language;
 
   const _HoldPokemonTile({
     required this.pokemonId,
     required this.name,
     required this.types,
-    required this.entries,
+    required this.rarity,
     required this.language,
   });
 
@@ -481,11 +705,6 @@ class _HoldPokemonTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final spriteUrl =
         'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/$pokemonId.png';
-
-    // Group by version, show rarity
-    final versionText = entries
-        .map((e) => '${e.versionName} (${e.rarity}%)')
-        .join(', ');
 
     return ListTile(
       leading: CachedNetworkImage(
@@ -501,23 +720,23 @@ class _HoldPokemonTile extends StatelessWidget {
             const Icon(Icons.catching_pokemon, size: 24, color: Colors.grey),
       ),
       title: Text(name),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      subtitle: Wrap(
+        spacing: 4,
+        children: types.map((t) => TypeChip(type: t, language: language, fontSize: 9)).toList(),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Wrap(
-            spacing: 4,
-            children: types.map((t) => TypeChip(type: t, language: language, fontSize: 9)).toList(),
-          ),
-          const SizedBox(height: 2),
           Text(
-            versionText,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            '$rarity%',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '#${pokemonId.toString().padLeft(4, '0')}',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
           ),
         ],
-      ),
-      trailing: Text(
-        '#${pokemonId.toString().padLeft(4, '0')}',
-        style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
       ),
       onTap: () => Navigator.push(
         context,
@@ -526,6 +745,10 @@ class _HoldPokemonTile extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data classes
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _GenerationEntry {
   final int id;
@@ -540,6 +763,7 @@ class _HoldEntry {
   final int rarity;
   final String versionName;
   final int versionId;
+  final String versionIdentifier;
 
   _HoldEntry({
     required this.pokemonId,
@@ -548,6 +772,7 @@ class _HoldEntry {
     required this.rarity,
     required this.versionName,
     required this.versionId,
+    required this.versionIdentifier,
   });
 }
 
@@ -557,6 +782,7 @@ class _MachineEntry {
   final String moveName;
   final TypePokemon? moveType;
   final String versions;
+  final int versionGroupId;
 
   _MachineEntry({
     required this.number,
@@ -564,5 +790,6 @@ class _MachineEntry {
     required this.moveName,
     required this.moveType,
     required this.versions,
+    required this.versionGroupId,
   });
 }

@@ -13,6 +13,7 @@ import 'package:poke_jerk_api/ui/widgets/moves_tab.dart';
 import 'package:poke_jerk_api/ui/widgets/pokemon_header.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/stats_tab.dart';
+import 'package:poke_jerk_api/ui/widgets/variants_tab.dart';
 import 'package:provider/provider.dart';
 
 class DetailPokemon extends StatelessWidget {
@@ -27,7 +28,7 @@ class DetailPokemon extends StatelessWidget {
       options: QueryOptions(
         document: gql(getPokemonDetailQuery),
         variables: {'id': pokemonId},
-        fetchPolicy: FetchPolicy.cacheFirst,
+        fetchPolicy: FetchPolicy.noCache,
       ),
       builder: (result, {fetchMore, refetch}) {
         if (result.isLoading) return DetailLoadingSkeleton(pokemonId: pokemonId);
@@ -65,17 +66,67 @@ class _DetailView extends StatefulWidget {
 
 class _DetailViewState extends State<_DetailView> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ScrollController _outerScrollController = ScrollController();
+  final Set<int> _scrollableTabs = {0, 1, 2, 3, 4};
+  late final _AdaptiveScrollPhysics _scrollPhysics;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(_handleTabChange);
+    _scrollPhysics = _AdaptiveScrollPhysics(
+      shouldResist: () => !_scrollableTabs.contains(_tabController.index),
+    );
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
+    _outerScrollController.dispose();
     super.dispose();
+  }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging) return;
+    if (!_scrollableTabs.contains(_tabController.index) &&
+        _outerScrollController.hasClients &&
+        _outerScrollController.offset > 0) {
+      _outerScrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _updateTabScrollable(int index, double innerMaxExtent) {
+    // Account for header collapse: inner viewport grows by headerExtent
+    // when header fully collapses. Content fits if innerMaxExtent <= headerExtent.
+    final headerExtent = _outerScrollController.hasClients
+        ? _outerScrollController.position.maxScrollExtent
+        : 0.0;
+    final needsScroll = innerMaxExtent > headerExtent;
+    if (needsScroll) {
+      _scrollableTabs.add(index);
+    } else {
+      _scrollableTabs.remove(index);
+    }
+  }
+
+  Widget _wrapTab(int index, Widget child) {
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (notification) {
+        final metrics = notification.metrics;
+        if (metrics.axisDirection == AxisDirection.down ||
+            metrics.axisDirection == AxisDirection.up) {
+          _updateTabScrollable(index, metrics.maxScrollExtent);
+        }
+        return false;
+      },
+      child: child,
+    );
   }
 
   @override
@@ -93,6 +144,8 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
 
     return Scaffold(
       body: NestedScrollView(
+        controller: _outerScrollController,
+        physics: _scrollPhysics,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
             expandedHeight: 220,
@@ -148,9 +201,12 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
                 labelColor: bgColor,
                 unselectedLabelColor: Colors.grey,
                 indicatorColor: bgColor,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 tabs: [
                   Tab(text: language == 'fr' ? 'Stats' : 'Stats'),
                   Tab(text: language == 'fr' ? 'Évolutions' : 'Evolutions'),
+                  Tab(text: language == 'fr' ? 'Variantes' : 'Variants'),
                   Tab(text: language == 'fr' ? 'Capacités' : 'Moves'),
                   Tab(text: language == 'fr' ? 'Localisations' : 'Locations'),
                 ],
@@ -161,15 +217,16 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
         body: TabBarView(
           controller: _tabController,
           children: [
-            StatsTab(pokemon: pokemon, language: language, accentColor: bgColor),
-            EvolutionChainWidget(
+            _wrapTab(0, StatsTab(pokemon: pokemon, language: language, accentColor: bgColor)),
+            _wrapTab(1, EvolutionChainWidget(
               evolutions: pokemon.species?.evolutions ?? [],
               moves: pokemon.moves,
               language: language,
               currentPokemonId: pokemon.id,
               externalMaxGeneration: widget.versionFilter?.generationId,
               externalPokedexId: widget.versionFilter?.pokedexId,
-            ),
+            )),
+            _wrapTab(2, VariantsTab(pokemon: pokemon, language: language, accentColor: bgColor)),
             MovesTab(
               moves: pokemon.moves,
               language: language,
@@ -212,4 +269,46 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Scroll physics that lets the user drag but springs back to expanded header
+// ──────────────────────────────────────────────────────────────────────────────
+
+class _AdaptiveScrollPhysics extends ScrollPhysics {
+  final bool Function() shouldResist;
+
+  _AdaptiveScrollPhysics({required this.shouldResist, super.parent});
+
+  @override
+  _AdaptiveScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return _AdaptiveScrollPhysics(
+      shouldResist: shouldResist,
+      parent: buildParent(ancestor),
+    );
+  }
+
+  @override
+  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
+    final base = super.applyPhysicsToUserOffset(position, offset);
+    return shouldResist() ? base * 0.15 : base;
+  }
+
+  @override
+  Simulation? createBallisticSimulation(
+      ScrollMetrics position, double velocity) {
+    if (shouldResist() && position.pixels > position.minScrollExtent) {
+      return ScrollSpringSimulation(
+        SpringDescription.withDampingRatio(
+          mass: 0.3,
+          stiffness: 200,
+          ratio: 1.0,
+        ),
+        position.pixels,
+        position.minScrollExtent,
+        velocity,
+      );
+    }
+    return super.createBallisticSimulation(position, velocity);
+  }
 }

@@ -24,6 +24,7 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   int _selectedIndex = 0;
+  bool _searchOpen = false;
   final TextEditingController _searchController = TextEditingController();
 
   static const List<_NavItem> _navItems = [
@@ -62,8 +63,19 @@ class _HomeState extends State<Home> {
     if (i != _selectedIndex) {
       _searchController.clear();
       context.read<GlobalFilterProvider>().setSearch('');
+      _searchOpen = false;
     }
     setState(() => _selectedIndex = i);
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searchOpen = !_searchOpen;
+      if (!_searchOpen) {
+        _searchController.clear();
+        context.read<GlobalFilterProvider>().setSearch('');
+      }
+    });
   }
 
   @override
@@ -81,49 +93,39 @@ class _HomeState extends State<Home> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(titles[_selectedIndex]),
+        toolbarHeight: 40,
+        title: Text(titles[_selectedIndex], style: const TextStyle(fontSize: 17)),
+        actions: [
+          if (showFilters)
+            IconButton(
+              icon: Icon(_searchOpen ? Icons.search_off : Icons.search),
+              onPressed: _toggleSearch,
+              tooltip: language == 'fr' ? 'Rechercher' : 'Search',
+            ),
+        ],
         bottom: showFilters
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(44),
-                child: Material(
-                  color: Colors.white,
-                  elevation: 0,
-                  child: SizedBox(
-                    height: 44,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                      children: [
-                        GestureDetector(
-                          onTap: () => _showVersionSheet(context, language, filter),
-                          child: VersionChip(
-                            label: _versionLabel(language, filter),
-                            selected: filter.selectedVersionGroup,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => _showTypeSheet(context, language, filter),
-                          child: filter.selectedTypeIds.isEmpty
-                              ? const FilterChip2(
-                                  label: 'Type',
-                                  isActive: false,
-                                  icon: Icons.style_outlined,
-                                )
-                              : _typeFilterChip(language, filter),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => _showGenerationSheet(context, language, filter),
-                          child: FilterChip2(
-                            label: _genLabel(language, filter),
-                            isActive: filter.selectedGenerationId != null,
-                            icon: Icons.auto_awesome_mosaic_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+            ? _FilterBar(
+                filter: filter,
+                language: language,
+                onVersionTap: () => _showVersionSheet(context, language, filter),
+                onTypeTap: () => _showTypeSheet(context, language, filter),
+                onGenTap: () => _showGenerationSheet(context, language, filter),
+                versionChipLabel: _versionLabel(language, filter),
+                versionChipGroup: _versionChipGroup(filter),
+                dlcSelected: filter.selectedVersionGroup?.isDlc == true
+                    ? filter.selectedVersionGroup
+                    : null,
+                typeChip: filter.selectedTypeIds.isEmpty
+                    ? const FilterChip2(
+                        label: 'Type',
+                        isActive: false,
+                        icon: Icons.style_outlined,
+                      )
+                    : _typeFilterChip(language, filter),
+                genChip: FilterChip2(
+                  label: _genLabel(language, filter),
+                  isActive: filter.selectedGenerationId != null,
+                  icon: Icons.auto_awesome_mosaic_outlined,
                 ),
               )
             : null,
@@ -131,18 +133,28 @@ class _HomeState extends State<Home> {
       body: Column(
         children: [
           if (showFilters)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-              child: SearchTextField(
-                controller: _searchController,
-                search: filter.searchQuery,
-                language: language,
-                onChanged: (value) => filter.setSearch(value.trim()),
-                onCleared: () {
-                  _searchController.clear();
-                  filter.setSearch('');
-                },
-              ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: _searchOpen
+                  ? Material(
+                      color: Colors.white,
+                      elevation: 0,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+                        child: SearchTextField(
+                          controller: _searchController,
+                          search: filter.searchQuery,
+                          language: language,
+                          onChanged: (value) => filter.setSearch(value.trim()),
+                          onCleared: () {
+                            _searchController.clear();
+                            filter.setSearch('');
+                          },
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
           Expanded(
             child: IndexedStack(
@@ -164,15 +176,38 @@ class _HomeState extends State<Home> {
 
   String _versionLabel(String language, GlobalFilterProvider filter) {
     if (filter.selectedVersionGroup == null) return 'Version';
-    final groupName = filter.selectedVersionGroup!.getName(language);
-    if (filter.selectedVersionGroup!.pokedexes.length <= 1 ||
-        filter.selectedPokedexId == null) {
+    final vg = filter.selectedVersionGroup!;
+    final groupName = vg.getName(language);
+
+    // If a DLC is selected, show "Parent + DLC name"
+    if (vg.isDlc) {
+      final parent = filter.versionGroups
+          .cast<VersionGroup?>()
+          .firstWhere((g) => g?.id == vg.parentId, orElse: () => null);
+      if (parent != null) {
+        return '${parent.getName(language)} · $groupName';
+      }
+    }
+
+    if (vg.pokedexes.length <= 1 || filter.selectedPokedexId == null) {
       return groupName;
     }
-    final dex = filter.selectedVersionGroup!.pokedexes
+    final dex = vg.pokedexes
         .cast<PokedexEntry?>()
         .firstWhere((p) => p?.id == filter.selectedPokedexId, orElse: () => null);
     return dex != null ? '$groupName · ${dex.name}' : groupName;
+  }
+
+  /// For chip display: use parent version group colors when a DLC is selected.
+  VersionGroup? _versionChipGroup(GlobalFilterProvider filter) {
+    final vg = filter.selectedVersionGroup;
+    if (vg == null) return null;
+    if (vg.isDlc) {
+      return filter.versionGroups
+          .cast<VersionGroup?>()
+          .firstWhere((g) => g?.id == vg.parentId, orElse: () => vg);
+    }
+    return vg;
   }
 
   String _genLabel(String language, GlobalFilterProvider filter) {
@@ -383,3 +418,70 @@ class _NavItem {
 
   const _NavItem({required this.label, required this.icon});
 }
+
+class _FilterBar extends StatelessWidget implements PreferredSizeWidget {
+  final GlobalFilterProvider filter;
+  final String language;
+  final VoidCallback onVersionTap;
+  final VoidCallback onTypeTap;
+  final VoidCallback onGenTap;
+  final String versionChipLabel;
+  final VersionGroup? versionChipGroup;
+  final VersionGroup? dlcSelected;
+  final Widget typeChip;
+  final Widget genChip;
+
+  const _FilterBar({
+    required this.filter,
+    required this.language,
+    required this.onVersionTap,
+    required this.onTypeTap,
+    required this.onGenTap,
+    required this.versionChipLabel,
+    this.versionChipGroup,
+    this.dlcSelected,
+    required this.typeChip,
+    required this.genChip,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(44);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        color: Colors.white,
+        elevation: 0,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: onVersionTap,
+                child: VersionChip(
+                  label: versionChipLabel,
+                  selected: versionChipGroup,
+                  dlcSelected: dlcSelected,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onTypeTap,
+                child: typeChip,
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onGenTap,
+                child: genChip,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

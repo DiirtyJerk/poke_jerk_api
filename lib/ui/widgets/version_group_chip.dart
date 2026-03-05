@@ -27,8 +27,7 @@ class VersionGroupChip extends StatelessWidget {
         .toList();
     if (colors.isEmpty) colors.add(Colors.blueGrey);
 
-    Color textColorFor(Color bg) =>
-        bg.computeLuminance() > 0.4 ? Colors.black87 : Colors.white;
+    Color textColorFor(Color bg) => ColorBuilder.textColorOn(bg);
 
     final coloredSections = <Widget>[];
     for (int i = 0; i < parts.length; i++) {

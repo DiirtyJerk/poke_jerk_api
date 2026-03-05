@@ -18,9 +18,11 @@ class SearchTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
+    return SizedBox(
+      height: 44,
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
         hintText: language == 'fr' ? 'Rechercher...' : 'Search...',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: search.isNotEmpty
@@ -33,7 +35,8 @@ class SearchTextField extends StatelessWidget {
         isDense: true,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      onChanged: onChanged,
+        onChanged: onChanged,
+      ),
     );
   }
 }

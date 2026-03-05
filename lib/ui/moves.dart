@@ -8,6 +8,7 @@ import 'package:poke_jerk_api/ui/detail_move.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/stat_badge.dart';
+import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/utils/string_utils.dart';
 import 'package:provider/provider.dart';
 
@@ -97,22 +98,22 @@ class _MovesPageState extends State<MovesPage> {
           message: language == 'fr' ? 'Aucune capacité trouvée' : 'No moves found');
     }
 
-    return ListView.separated(
+    return ListView.builder(
       controller: _scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 4),
       itemCount: filtered.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
-        return _MoveTile(move: filtered[index], language: language);
+        return _MoveCard(move: filtered[index], language: language);
       },
     );
   }
 }
 
-class _MoveTile extends StatelessWidget {
+class _MoveCard extends StatelessWidget {
   final Move move;
   final String language;
 
-  const _MoveTile({required this.move, required this.language});
+  const _MoveCard({required this.move, required this.language});
 
   @override
   Widget build(BuildContext context) {
@@ -120,45 +121,85 @@ class _MoveTile extends StatelessWidget {
         ? ColorBuilder.getTypeColor(move.type!)
         : Colors.grey;
 
-    return ListTile(
-      title: Text(move.getTranslation(language)),
-      leading: Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: typeColor,
-          shape: BoxShape.circle,
+    final damageIcon = switch (move.damageClass?.identifier) {
+      'physical' => Icons.flash_on,
+      'special'  => Icons.auto_awesome,
+      _          => Icons.remove,
+    };
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      elevation: 0,
+      color: typeColor.withValues(alpha: 0.06),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: typeColor.withValues(alpha: 0.25), width: 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => DetailMove(moveId: move.id)),
         ),
-      ),
-      subtitle: Row(
-        children: [
-          if (move.type != null)
-            Text(
-              move.type!.getTranslation(language),
-              style: TextStyle(color: typeColor, fontSize: 12, fontWeight: FontWeight.w500),
-            ),
-          if (move.type != null && move.damageClass != null)
-            Text(' · ', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-          if (move.damageClass != null)
-            Text(
-              move.damageClass!.getTranslation(language),
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-        ],
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          StatBadge(label: language == 'fr' ? 'Puiss.' : 'Power', value: move.power > 0 ? '${move.power}' : '—'),
-          const SizedBox(width: 8),
-          StatBadge(label: 'PP', value: move.pp > 0 ? '${move.pp}' : '—'),
-          const SizedBox(width: 8),
-          StatBadge(label: language == 'fr' ? 'Préc.' : 'Acc.', value: move.accuracy > 0 ? '${move.accuracy}%' : '—'),
-        ],
-      ),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => DetailMove(moveId: move.id)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 36,
+                child: Icon(damageIcon, size: 16, color: typeColor),
+              ),
+
+              const SizedBox(width: 4),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      move.getTranslation(language),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (move.type != null)
+                          TypeChip(type: move.type!, language: language, fontSize: 10),
+                        const SizedBox(width: 6),
+                        Icon(damageIcon, size: 12, color: Colors.grey.shade500),
+                        const SizedBox(width: 2),
+                        Text(
+                          move.damageClass?.getTranslation(language) ?? '',
+                          style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  StatBadge(
+                    label: language == 'fr' ? 'Puiss.' : 'Power',
+                    value: move.power > 0 ? '${move.power}' : '—',
+                  ),
+                  const SizedBox(width: 10),
+                  StatBadge(
+                    label: 'PP',
+                    value: move.pp > 0 ? '${move.pp}' : '—',
+                  ),
+                  const SizedBox(width: 10),
+                  StatBadge(
+                    label: language == 'fr' ? 'Préc.' : 'Acc.',
+                    value: move.accuracy > 0 ? '${move.accuracy}%' : '—',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

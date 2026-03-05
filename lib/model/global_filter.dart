@@ -12,7 +12,8 @@ class GlobalFilterProvider extends ChangeNotifier {
   // Données de filtre (chargées une fois)
   List<TypePokemon> types = [];
   List<Generation> generations = [];
-  List<VersionGroup> versionGroups = [];
+  List<VersionGroup> versionGroups = []; // top-level only (no DLCs)
+  List<VersionGroup> _allVersionGroups = []; // includes DLCs
   bool filtersLoaded = false;
 
   // Recherche
@@ -74,7 +75,8 @@ class GlobalFilterProvider extends ChangeNotifier {
       }
     }
 
-    versionGroups = vgMeta.entries
+    // Build all version groups (including DLCs)
+    final allVgs = vgMeta.entries
         .map((entry) {
           final vgId = entry.key;
           final vg = entry.value;
@@ -101,11 +103,24 @@ class GlobalFilterProvider extends ChangeNotifier {
             nameFr: namesFr.join(' / '),
             nameEn: namesEn.join(' / '),
             pokedexes: vgPokedexes[vgId] ?? [],
+            parentId: VersionGroup.dlcParentMap[vgId],
           );
         })
         .whereType<VersionGroup>()
         .toList()
       ..sort((a, b) => a.id.compareTo(b.id));
+
+    // Attach DLCs to their parent version groups
+    final vgById = <int, VersionGroup>{for (final vg in allVgs) vg.id: vg};
+    for (final vg in allVgs) {
+      if (vg.parentId != null && vgById.containsKey(vg.parentId)) {
+        vgById[vg.parentId]!.dlcChildren.add(vg);
+      }
+    }
+
+    // Keep a flat list for lookup, but top-level list excludes DLCs
+    _allVersionGroups = allVgs;
+    versionGroups = allVgs.where((vg) => !vg.isDlc).toList();
 
     filtersLoaded = true;
     restoreFilters();
@@ -129,7 +144,7 @@ class GlobalFilterProvider extends ChangeNotifier {
 
     VersionGroup? vg;
     if (savedVgId != null) {
-      vg = versionGroups.cast<VersionGroup?>().firstWhere(
+      vg = _allVersionGroups.cast<VersionGroup?>().firstWhere(
         (v) => v?.id == savedVgId,
         orElse: () => null,
       );
@@ -187,13 +202,43 @@ class GlobalFilterProvider extends ChangeNotifier {
     BuildContext context,
     VersionGroup group,
   ) async {
-    if (group.pokedexes.length == 1) {
+    // If no DLCs and single pokédex, select directly
+    if (!group.hasDlc && group.pokedexes.length == 1) {
       setVersionGroup(group, pokedexId: group.pokedexes.first.id);
       return;
     }
 
+    // If no DLCs but multiple pokédexes, show simple pokédex picker
+    if (!group.hasDlc && group.pokedexes.length > 1) {
+      final dex = await _showPokedexPicker(context, group, group.pokedexes);
+      if (dex != null) {
+        setVersionGroup(group, pokedexId: dex.id);
+      }
+      return;
+    }
+
+    // Has DLCs: show dialog with base game + DLC sections
+    final language = UserSettings().language;
+    final result = await showDialog<_DlcPickerResult>(
+      context: context,
+      builder: (ctx) => _DlcPickerDialog(
+        parentGroup: group,
+        language: language,
+      ),
+    );
+
+    if (result != null) {
+      setVersionGroup(result.versionGroup, pokedexId: result.pokedexId);
+    }
+  }
+
+  Future<PokedexEntry?> _showPokedexPicker(
+    BuildContext context,
+    VersionGroup group,
+    List<PokedexEntry> pokedexes,
+  ) async {
     final color = ColorBuilder.getVersionGroupColor(group.identifier);
-    final dex = await showDialog<PokedexEntry>(
+    return showDialog<PokedexEntry>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: Row(
@@ -207,7 +252,7 @@ class GlobalFilterProvider extends ChangeNotifier {
             Text(group.getName(UserSettings().language)),
           ],
         ),
-        children: group.pokedexes
+        children: pokedexes
             .map(
               (d) => SimpleDialogOption(
                 onPressed: () => Navigator.pop(ctx, d),
@@ -220,10 +265,6 @@ class GlobalFilterProvider extends ChangeNotifier {
             .toList(),
       ),
     );
-
-    if (dex != null) {
-      setVersionGroup(group, pokedexId: dex.id);
-    }
   }
 
   String _localizedName(List raw, String language) {
@@ -235,5 +276,248 @@ class GlobalFilterProvider extends ChangeNotifier {
       if (n['language_id'] == 9) return n['name'] as String;
     }
     return '';
+  }
+}
+
+class _DlcPickerResult {
+  final VersionGroup versionGroup;
+  final int pokedexId;
+  const _DlcPickerResult({required this.versionGroup, required this.pokedexId});
+}
+
+class _DlcPickerDialog extends StatelessWidget {
+  final VersionGroup parentGroup;
+  final String language;
+
+  const _DlcPickerDialog({
+    required this.parentGroup,
+    required this.language,
+  });
+
+  Color _textColorOn(Color bg) => ColorBuilder.textColorOn(bg);
+
+  @override
+  Widget build(BuildContext context) {
+    // Remove pokédexes that belong to DLC children from the parent list
+    final dlcPokedexIds = <int>{};
+    for (final dlc in parentGroup.dlcChildren) {
+      for (final dex in dlc.pokedexes) {
+        dlcPokedexIds.add(dex.id);
+      }
+    }
+    final basePokedexes = parentGroup.pokedexes
+        .where((dex) => !dlcPokedexIds.contains(dex.id))
+        .toList();
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Title
+            Text(
+              language == 'fr' ? 'Choisir une version' : 'Choose a version',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+
+            // Base game card (with only base pokédexes)
+            _buildVersionCard(
+              context,
+              versionGroup: parentGroup,
+              label: parentGroup.getName(language),
+              versionIdentifiers: parentGroup.versionIdentifiers,
+              pokedexOverride: basePokedexes,
+            ),
+
+            // DLC cards
+            for (final dlc in parentGroup.dlcChildren) ...[
+              const SizedBox(height: 8),
+              _buildDlcCard(context, dlc),
+            ],
+
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVersionCard(
+    BuildContext context, {
+    required VersionGroup versionGroup,
+    required String label,
+    required List<String> versionIdentifiers,
+    List<PokedexEntry>? pokedexOverride,
+  }) {
+    final pokedexes = pokedexOverride ?? versionGroup.pokedexes;
+    final colors = versionIdentifiers
+        .map((id) => ColorBuilder.getVersionColor(id))
+        .toList();
+    if (colors.isEmpty) colors.add(Colors.blueGrey);
+    final mainColor = colors.first;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          if (pokedexes.length == 1) {
+            Navigator.pop(
+              context,
+              _DlcPickerResult(
+                versionGroup: versionGroup,
+                pokedexId: pokedexes.first.id,
+              ),
+            );
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: mainColor.withValues(alpha: 0.3)),
+            color: mainColor.withValues(alpha: 0.06),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Colored header with version name
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                child: _buildColoredHeader(label, versionIdentifiers, colors),
+              ),
+              // Pokédex entries
+              if (pokedexes.length > 1)
+                for (final dex in pokedexes)
+                  InkWell(
+                    onTap: () => Navigator.pop(
+                      context,
+                      _DlcPickerResult(versionGroup: versionGroup, pokedexId: dex.id),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.map_outlined, size: 14, color: mainColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            dex.name,
+                            style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                          ),
+                          const Spacer(),
+                          Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDlcCard(BuildContext context, VersionGroup dlc) {
+    final dlcColor = ColorBuilder.getVersionGroupColor(dlc.identifier);
+    final textColor = _textColorOn(dlcColor);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          if (dlc.pokedexes.isNotEmpty) {
+            Navigator.pop(
+              context,
+              _DlcPickerResult(versionGroup: dlc, pokedexId: dlc.pokedexes.first.id),
+            );
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: dlcColor.withValues(alpha: 0.3)),
+            color: dlcColor.withValues(alpha: 0.06),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(11),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // DLC colored banner
+                Container(
+                  color: dlcColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.extension_outlined, size: 14, color: textColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          dlc.getName(language),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textColor,
+                          ),
+                        ),
+                      ),
+                      if (dlc.pokedexes.isNotEmpty)
+                        Text(
+                          dlc.pokedexes.first.name,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: textColor.withValues(alpha: 0.7),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColoredHeader(
+    String label,
+    List<String> versionIdentifiers,
+    List<Color> colors,
+  ) {
+    final parts = label.split('/').map((s) => s.trim()).toList();
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = 0; i < parts.length; i++) ...[
+            if (i > 0) Container(width: 1, color: Colors.white24),
+            Expanded(
+              child: Container(
+                color: colors[i < colors.length ? i : colors.length - 1],
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                alignment: Alignment.center,
+                child: Text(
+                  parts[i],
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _textColorOn(
+                      colors[i < colors.length ? i : colors.length - 1],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

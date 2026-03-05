@@ -21,9 +21,15 @@ class StatsTab extends StatelessWidget {
     final species = pokemon.species;
     final total = pokemon.stats.values.fold(0, (s, v) => s + v);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
         _SectionHeader(
           title: language == 'fr' ? 'Faiblesses de type' : 'Type weaknesses',
           color: accentColor,
@@ -38,27 +44,40 @@ class StatsTab extends StatelessWidget {
           color: accentColor,
         ),
         const SizedBox(height: 8),
-        ...pokemon.stats.entries.map(
-          (e) => StatBar(stat: e.key, value: e.value, language: language),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Column(
             children: [
-              SizedBox(
-                width: 110,
-                child: Text(
-                  language == 'fr' ? 'Total' : 'Total',
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.bold),
-                ),
+              ...pokemon.stats.entries.map(
+                (e) => StatBar(stat: e.key, value: e.value, language: language),
               ),
-              SizedBox(
-                width: 40,
-                child: Text(
-                  '$total',
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              Divider(height: 1, color: Colors.grey.shade200),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: Text(
+                        language == 'fr' ? 'Total' : 'Total',
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 40,
+                      child: Text(
+                        '$total',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -126,7 +145,11 @@ class StatsTab extends StatelessWidget {
             }).toList(),
           ),
         ],
-      ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -180,44 +203,119 @@ class _WeaknessSection extends StatelessWidget {
     chart.forEach((type, mult) =>
         groups.putIfAbsent(mult, () => []).add(type));
 
-    const displayOrder = [4.0, 2.0, 0.0, 0.25, 0.5];
-    final rows = displayOrder
+    // Separate weaknesses (>1) from resistances/immunities (<=1)
+    const weakOrder = [4.0, 2.0];
+    const resistOrder = [0.5, 0.25, 0.0];
+
+    final weakRows = weakOrder
+        .where((m) => groups.containsKey(m))
+        .map((m) => MapEntry(m, groups[m]!))
+        .toList();
+    final resistRows = resistOrder
         .where((m) => groups.containsKey(m))
         .map((m) => MapEntry(m, groups[m]!))
         .toList();
 
-    if (rows.isEmpty) {
+    if (weakRows.isEmpty && resistRows.isEmpty) {
       return Text(
         language == 'fr' ? 'Aucune faiblesse notable' : 'No notable weakness',
         style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
       );
     }
 
-    return Column(
-      children: rows.map((entry) {
-        final mult = entry.key;
-        final typeIds = entry.value;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _MultiplierBadge(multiplier: mult),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: typeIds.map((id) => _TypeLabel(
-                    identifier: id,
-                    language: language,
-                  )).toList(),
-                ),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (weakRows.isNotEmpty) ...[
+            _GroupHeader(
+              label: language == 'fr' ? 'Faiblesses' : 'Weaknesses',
+              icon: Icons.arrow_downward_rounded,
+              color: Colors.red.shade400,
+            ),
+            for (final entry in weakRows)
+              _WeaknessRow(mult: entry.key, typeIds: entry.value, language: language),
+          ],
+          if (weakRows.isNotEmpty && resistRows.isNotEmpty)
+            Divider(height: 1, color: Colors.grey.shade200),
+          if (resistRows.isNotEmpty) ...[
+            _GroupHeader(
+              label: language == 'fr' ? 'Résistances' : 'Resistances',
+              icon: Icons.shield_outlined,
+              color: Colors.teal.shade400,
+            ),
+            for (final entry in resistRows)
+              _WeaknessRow(mult: entry.key, typeIds: entry.value, language: language),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupHeader extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _GroupHeader({required this.label, required this.icon, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+              letterSpacing: 0.5,
+            ),
           ),
-        );
-      }).toList(),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeaknessRow extends StatelessWidget {
+  final double mult;
+  final List<String> typeIds;
+  final String language;
+
+  const _WeaknessRow({required this.mult, required this.typeIds, required this.language});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _MultiplierBadge(multiplier: mult),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: typeIds.map((id) => _TypeLabel(
+                identifier: id,
+                language: language,
+              )).toList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -278,8 +376,7 @@ class _TypeLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = ColorBuilder.getTypeColorByIdentifier(identifier);
     final name = TypeChart.getTypeName(identifier, language);
-    final lum = color.computeLuminance();
-    final textColor = lum > 0.4 ? Colors.black87 : Colors.white;
+    final textColor = ColorBuilder.textColorOn(color);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

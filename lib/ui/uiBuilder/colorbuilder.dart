@@ -65,6 +65,10 @@ class ColorBuilder {
     'legends-arceus': Color(0xFF8B4513),
     'scarlet': Color(0xFFFF2400),
     'violet': Color(0xFF7F00FF),
+    'the-isle-of-armor': Color(0xFFE6A817),
+    'the-crown-tundra': Color(0xFF5B9BD5),
+    'the-teal-mask': Color(0xFF008080),
+    'the-indigo-disk': Color(0xFF4B0082),
   };
 
   static Color getTypeColor(TypePokemon type) {
@@ -101,23 +105,22 @@ class ColorBuilder {
     'brilliant-diamond-and-shining-pearl': Color(0xFFB9F2FF),
     'legends-arceus': Color(0xFF8B4513),
     'scarlet-violet': Color(0xFFFF2400),
+    'the-isle-of-armor': Color(0xFFE6A817),
+    'the-crown-tundra': Color(0xFF5B9BD5),
+    'the-teal-mask': Color(0xFF008080),
+    'the-indigo-disk': Color(0xFF4B0082),
   };
 
   static Color getVersionGroupColor(String identifier) {
     return _versionGroupColors[identifier] ?? Colors.blueGrey;
   }
 
-  static Color getVersionGroupTextColor(String identifier) {
-    final bg = getVersionGroupColor(identifier);
-    return bg.computeLuminance() > 0.4 ? Colors.black87 : Colors.white;
-  }
+  static Color getVersionGroupTextColor(String identifier) =>
+      textColorOn(getVersionGroupColor(identifier));
 
   /// Couleur du texte sur fond de version (blanc ou noir selon la luminosité)
-  static Color getVersionTextColor(String versionIdentifier) {
-    final bg = getVersionColor(versionIdentifier);
-    final luminance = bg.computeLuminance();
-    return luminance > 0.4 ? Colors.black87 : Colors.white;
-  }
+  static Color getVersionTextColor(String versionIdentifier) =>
+      textColorOn(getVersionColor(versionIdentifier));
 
   /// Couleur des stats
   static const Map<String, Color> _statColors = {
@@ -132,4 +135,8 @@ class ColorBuilder {
   static Color getStatColor(String statIdentifier) {
     return _statColors[statIdentifier] ?? Colors.grey;
   }
+
+  /// Returns black or white text color depending on background luminance
+  static Color textColorOn(Color bg) =>
+      bg.computeLuminance() > 0.4 ? Colors.black87 : Colors.white;
 }

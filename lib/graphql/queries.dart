@@ -130,6 +130,29 @@ query GetPokemonDetail($id: Int!) {
         genus
         language_id
       }
+      pokemon_v2_pokemons(order_by: {id: asc}) {
+        id
+        name
+        is_default
+        pokemon_v2_pokemonforms(limit: 1) {
+          form_name
+          pokemon_v2_pokemonformnames(where: {language_id: {_in: [5, 9]}}) {
+            name
+            pokemon_name
+            language_id
+          }
+        }
+        pokemon_v2_pokemontypes(order_by: {slot: asc}) {
+          pokemon_v2_type {
+            id
+            name
+            pokemon_v2_typenames(where: {language_id: {_in: [5, 9]}}) {
+              name
+              language_id
+            }
+          }
+        }
+      }
       pokemon_v2_evolutionchain {
         pokemon_v2_pokemonspecies(order_by: {id: asc}) {
           id
@@ -360,7 +383,7 @@ query GetMoves {
 ''';
 
 const String getMoveDetailQuery = r'''
-query GetMoveDetail($moveId: Int!) {
+query GetMoveDetail($moveId: Int!, $pokemonMovesWhere: pokemon_v2_pokemonmove_bool_exp!) {
   pokemon_v2_move_by_pk(id: $moveId) {
     id
     name
@@ -392,7 +415,7 @@ query GetMoveDetail($moveId: Int!) {
       flavor_text
       language_id
     }
-    pokemon_v2_pokemonmoves(distinct_on: pokemon_id, order_by: [{pokemon_id: asc}]) {
+    pokemon_v2_pokemonmoves(distinct_on: pokemon_id, order_by: [{pokemon_id: asc}], where: $pokemonMovesWhere) {
       pokemon_v2_pokemon {
         id
         name
@@ -462,7 +485,7 @@ query GetVersionGroups {
 ''';
 
 const String getPokemonsByPokedexQuery = r'''
-query GetPokemonsByPokedex($pokedexId: Int!, $where: pokemon_v2_pokemon_bool_exp!) {
+query GetPokemonsByPokedex($pokedexId: Int!) {
   pokemon_v2_pokemondexnumber(
     where: { pokedex_id: { _eq: $pokedexId } }
     order_by: { pokedex_number: asc }
@@ -474,9 +497,13 @@ query GetPokemonsByPokedex($pokedexId: Int!, $where: pokemon_v2_pokemon_bool_exp
         name
         language_id
       }
-      pokemon_v2_pokemons(where: $where, limit: 1) {
+      pokemon_v2_pokemons(order_by: {is_default: desc}) {
         id
         name
+        is_default
+        pokemon_v2_pokemonforms(limit: 1) {
+          form_name
+        }
         pokemon_v2_pokemontypes(order_by: {slot: asc}) {
           pokemon_v2_type {
             id

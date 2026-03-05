@@ -134,6 +134,71 @@ class PokemonSpecies {
   }
 }
 
+class PokemonVariant {
+  final int id;
+  final String identifier;
+  final String formName;
+  final Map<int, String> names;
+  final List<TypePokemon> types;
+  final bool isDefault;
+
+  PokemonVariant({
+    required this.id,
+    required this.identifier,
+    required this.formName,
+    required this.names,
+    required this.types,
+    required this.isDefault,
+  });
+
+  String get spriteUrl =>
+      'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/$id.png';
+
+  String get shinySpriteUrl =>
+      'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/shiny/$id.png';
+
+  String getTranslation(String language) {
+    final langId = language == 'fr' ? 5 : 9;
+    return names[langId] ?? names[9] ?? identifier;
+  }
+
+  factory PokemonVariant.fromJson(Map<String, dynamic> json) {
+    final formsList = json['pokemon_v2_pokemonforms'] as List? ?? [];
+    final firstForm = formsList.isNotEmpty ? formsList.first as Map<String, dynamic> : null;
+    final formName = firstForm?['form_name'] as String? ?? '';
+    final names = <int, String>{};
+    if (firstForm != null) {
+      for (final n in (firstForm['pokemon_v2_pokemonformnames'] as List? ?? [])) {
+        final pokemonName = n['pokemon_name'] as String?;
+        if (pokemonName != null && pokemonName.isNotEmpty) {
+          names[n['language_id'] as int] = pokemonName;
+        } else {
+          final name = n['name'] as String?;
+          if (name != null && name.isNotEmpty) {
+            names[n['language_id'] as int] = name;
+          }
+        }
+      }
+    }
+
+    final types = <TypePokemon>[];
+    for (final t in (json['pokemon_v2_pokemontypes'] as List? ?? [])) {
+      if (t['pokemon_v2_type'] != null) {
+        types.add(TypePokemon.fromJson(t['pokemon_v2_type'] as Map<String, dynamic>));
+      }
+    }
+
+    return PokemonVariant(
+      id: json['id'] as int,
+      identifier: json['name'] as String,
+      formName: formName,
+      names: names,
+      types: types,
+      isDefault: json['is_default'] as bool? ?? true,
+    );
+  }
+}
+
 class Pokemon {
   final int id;
   final String identifier;
@@ -150,6 +215,7 @@ class Pokemon {
   final String? spriteUrl;
   final int? generationId;
   final int? pokedexNumber;
+  final List<PokemonVariant> variants;
 
   Pokemon({
     required this.id,
@@ -167,6 +233,7 @@ class Pokemon {
     this.spriteUrl,
     this.generationId,
     this.pokedexNumber,
+    this.variants = const [],
   });
 
   String get officialArtworkUrl =>
@@ -265,8 +332,21 @@ class Pokemon {
     }
 
     PokemonSpecies? species;
-    if (json['pokemon_v2_pokemonspecy'] != null) {
-      species = PokemonSpecies.fromJson(json['pokemon_v2_pokemonspecy'] as Map<String, dynamic>);
+    final specyJson = json['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
+    if (specyJson != null) {
+      species = PokemonSpecies.fromJson(specyJson);
+    }
+
+    // Parse variants (all forms of the same species)
+    final variants = <PokemonVariant>[];
+    if (specyJson != null) {
+      for (final p in (specyJson['pokemon_v2_pokemons'] as List? ?? [])) {
+        try {
+          variants.add(PokemonVariant.fromJson(p as Map<String, dynamic>));
+        } catch (_) {
+          // Skip malformed variant entries
+        }
+      }
     }
 
     return Pokemon(
@@ -284,6 +364,7 @@ class Pokemon {
       encounters: encounters,
       spriteUrl: null,
       generationId: species?.generationId,
+      variants: variants,
     );
   }
 }

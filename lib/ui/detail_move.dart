@@ -2,28 +2,65 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
+import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/move.dart';
+import 'package:poke_jerk_api/model/pokedex_filter_data.dart';
 import 'package:poke_jerk_api/model/type_pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
+import 'package:poke_jerk_api/ui/widgets/filter_bottom_sheet.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
+import 'package:poke_jerk_api/ui/widgets/version_group_chip.dart';
 import 'package:provider/provider.dart';
 
-class DetailMove extends StatelessWidget {
+class DetailMove extends StatefulWidget {
   final int moveId;
 
   const DetailMove({super.key, required this.moveId});
 
   @override
+  State<DetailMove> createState() => _DetailMoveState();
+}
+
+class _DetailMoveState extends State<DetailMove> {
+  VersionGroup? _localVersionGroup;
+  int? _localPokedexId;
+
+  @override
   Widget build(BuildContext context) {
     final language = context.watch<UserSettings>().language;
+    final filter = context.watch<GlobalFilterProvider>();
+    final activeVg = _localVersionGroup ?? filter.selectedVersionGroup;
+    final activePokedexId = _localVersionGroup != null
+        ? _localPokedexId
+        : filter.selectedPokedexId;
+
+    final Map<String, dynamic> pokemonMovesWhere;
+    if (activeVg != null) {
+      final vgFilter = <String, dynamic>{'version_group_id': {'_eq': activeVg.id}};
+      if (activePokedexId != null) {
+        vgFilter['pokemon_v2_pokemon'] = {
+          'pokemon_v2_pokemonspecy': {
+            'pokemon_v2_pokemondexnumbers': {
+              'pokedex_id': {'_eq': activePokedexId},
+            },
+          },
+        };
+      }
+      pokemonMovesWhere = vgFilter;
+    } else {
+      pokemonMovesWhere = {};
+    }
 
     return Query(
       options: QueryOptions(
         document: gql(getMoveDetailQuery),
-        variables: {'moveId': moveId},
+        variables: {
+          'moveId': widget.moveId,
+          'pokemonMovesWhere': pokemonMovesWhere,
+        },
         fetchPolicy: FetchPolicy.cacheFirst,
       ),
       builder: (result, {fetchMore, refetch}) {
@@ -70,7 +107,6 @@ class DetailMove extends StatelessWidget {
           final pkmn = pm['pokemon_v2_pokemon'] as Map<String, dynamic>?;
           if (pkmn == null) continue;
           final id = pkmn['id'] as int;
-          // Skip alt forms (id > 10000)
           if (id > 10000) continue;
           final speciesNames = <int, String>{};
           final species = pkmn['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
@@ -193,6 +229,32 @@ class DetailMove extends StatelessWidget {
                 ),
               ),
 
+              // Version selector
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () => _showVersionPicker(context, filter, language),
+                      child: activeVg != null
+                          ? VersionGroupChip(
+                              label: activeVg.getName(language),
+                              versionIdentifiers: activeVg.versionIdentifiers,
+                            )
+                          : Chip(
+                              avatar: const Icon(Icons.sports_esports_outlined, size: 16, color: Colors.black87),
+                              label: Text(
+                                language == 'fr' ? 'Version' : 'Version',
+                                style: const TextStyle(fontSize: 12, color: Colors.black87),
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              side: const BorderSide(color: Color(0xFFDDDDDD)),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+
               // Pokémon list header
               SliverToBoxAdapter(
                 child: Padding(
@@ -206,9 +268,7 @@ class DetailMove extends StatelessWidget {
                         color: typeColor,
                       ),
                       Text(
-                        language == 'fr'
-                            ? 'Pokémon (${pokemons.length})'
-                            : 'Pokémon (${pokemons.length})',
+                        'Pokémon (${pokemons.length})',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -220,24 +280,41 @@ class DetailMove extends StatelessWidget {
               ),
 
               // Pokémon list
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final p = pokemons[index];
-                    return _PokemonTile(
-                      entry: p,
-                      language: language,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => DetailPokemon(pokemonId: p.id),
+              if (pokemons.isNotEmpty)
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final p = pokemons[index];
+                      return _PokemonTile(
+                        entry: p,
+                        language: language,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DetailPokemon(pokemonId: p.id),
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  childCount: pokemons.length,
+                      );
+                    },
+                    childCount: pokemons.length,
+                  ),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      activeVg != null
+                          ? (language == 'fr'
+                              ? 'Aucun Pokémon dans ${activeVg.getName(language)}'
+                              : 'No Pokémon in ${activeVg.getName(language)}')
+                          : (language == 'fr'
+                              ? 'Aucun Pokémon'
+                              : 'No Pokémon'),
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                    ),
+                  ),
                 ),
-              ),
 
               const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
             ],
@@ -245,6 +322,91 @@ class DetailMove extends StatelessWidget {
         );
       },
     );
+  }
+
+  void _showVersionPicker(BuildContext context, GlobalFilterProvider filter, String language) {
+    if (!filter.filtersLoaded || filter.versionGroups.isEmpty) return;
+    final activeVg = _localVersionGroup ?? filter.selectedVersionGroup;
+
+    showFilterBottomSheet(
+      context: context,
+      title: language == 'fr' ? 'Filtrer par version' : 'Filter by version',
+      language: language,
+      showClear: activeVg != null,
+      onClear: () => setState(() {
+        _localVersionGroup = null;
+        _localPokedexId = null;
+      }),
+      builder: (scrollController) {
+        return ListView.separated(
+          controller: scrollController,
+          itemCount: filter.versionGroups.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (_, index) {
+            final g = filter.versionGroups[index];
+            final isSelected = activeVg?.id == g.id;
+            return AnimatedOpacity(
+              opacity: activeVg != null && !isSelected ? 0.5 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectLocalVersionGroup(context, g, language);
+                },
+                child: VersionGroupChip(
+                  label: g.getName(language),
+                  versionIdentifiers: g.versionIdentifiers,
+                  fillWidth: true,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _selectLocalVersionGroup(BuildContext context, VersionGroup group, String language) {
+    if (group.pokedexes.length <= 1) {
+      setState(() {
+        _localVersionGroup = group;
+        _localPokedexId = group.pokedexes.isNotEmpty ? group.pokedexes.first.id : null;
+      });
+      return;
+    }
+
+    final color = ColorBuilder.getVersionGroupColor(group.identifier);
+    showDialog<PokedexEntry>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Row(
+          children: [
+            Container(
+              width: 14, height: 14,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Text(group.getName(language)),
+          ],
+        ),
+        children: group.pokedexes
+            .map((d) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, d),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(d.name),
+                  ),
+                ))
+            .toList(),
+      ),
+    ).then((dex) {
+      if (dex != null) {
+        setState(() {
+          _localVersionGroup = group;
+          _localPokedexId = dex.id;
+        });
+      }
+    });
   }
 }
 

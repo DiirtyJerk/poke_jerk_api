@@ -79,6 +79,19 @@ class MyApp extends StatelessWidget {
       ),
       scaffoldBackgroundColor: _bg,
 
+      // Police légèrement plus grande par défaut
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(fontSize: 16),
+        bodyMedium: TextStyle(fontSize: 15),
+        bodySmall: TextStyle(fontSize: 13),
+        titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        labelLarge: TextStyle(fontSize: 15),
+        labelMedium: TextStyle(fontSize: 13),
+        labelSmall: TextStyle(fontSize: 12),
+      ),
+
       // AppBar : rouge Pokédex, texte blanc
       appBarTheme: const AppBarTheme(
         backgroundColor: _red,

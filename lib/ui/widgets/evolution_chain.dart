@@ -231,8 +231,10 @@ class _EvolutionChainWidgetState extends State<EvolutionChainWidget> {
                       tree,
                     );
                     return SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
                       scrollDirection: Axis.horizontal,
                       child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
                         padding: const EdgeInsets.symmetric(
                             vertical: 16, horizontal: 16),
                         child: _NodeWidget(

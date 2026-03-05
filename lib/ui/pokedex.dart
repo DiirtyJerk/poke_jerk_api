@@ -56,10 +56,12 @@ class _PokedexState extends State<Pokedex> {
     final pokedexId = filter.selectedPokedexId;
 
     if (pokedexId != null) {
+      final regionalForm = filter.selectedVersionGroup?.regionalForm;
+
       final result = await client.query(
         QueryOptions(
           document: gql(getPokemonsByPokedexQuery),
-          variables: {'pokedexId': pokedexId, 'where': basicWhere},
+          variables: {'pokedexId': pokedexId},
         ),
       );
 
@@ -69,17 +71,25 @@ class _PokedexState extends State<Pokedex> {
         return;
       }
 
-      final entries = result.data?['pokemon_v2_pokemondexnumber'] as List? ?? [];
+      final entries =
+          result.data?['pokemon_v2_pokemondexnumber'] as List? ?? [];
       final pokemons = <Pokemon>[];
       for (final entry in entries) {
-        final specyJson = entry['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
+        final specyJson =
+            entry['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
         if (specyJson == null) continue;
-        final raw = specyJson['pokemon_v2_pokemons'] as List?;
-        if (raw == null || raw.isEmpty) continue;
-        final pokemonJson = Map<String, dynamic>.from(raw.first as Map<String, dynamic>);
+        final allForms = specyJson['pokemon_v2_pokemons'] as List?;
+        if (allForms == null || allForms.isEmpty) continue;
+
+        // Pick the best form: regional match > default
+        final picked = _pickForm(allForms, regionalForm);
+        if (picked == null) continue;
+
+        final pokemonJson = Map<String, dynamic>.from(picked);
         pokemonJson['pokemon_v2_pokemonspecy'] = {
           'generation_id': specyJson['generation_id'],
-          'pokemon_v2_pokemonspeciesnames': specyJson['pokemon_v2_pokemonspeciesnames'],
+          'pokemon_v2_pokemonspeciesnames':
+              specyJson['pokemon_v2_pokemonspeciesnames'],
         };
         pokemonJson['pokedex_number'] = entry['pokedex_number'] as int?;
         pokemons.add(Pokemon.fromListJson(pokemonJson));
@@ -119,12 +129,36 @@ class _PokedexState extends State<Pokedex> {
     });
   }
 
+  /// Pick the best pokemon form for this pokédex.
+  /// If [regionalForm] is set (e.g. "galar"), prefer a form matching that name.
+  /// Otherwise fall back to the default form.
+  Map<String, dynamic>? _pickForm(List allForms, String? regionalForm) {
+    Map<String, dynamic>? defaultForm;
+    for (final f in allForms) {
+      final form = f as Map<String, dynamic>;
+      final forms = form['pokemon_v2_pokemonforms'] as List?;
+      final formName = (forms != null && forms.isNotEmpty)
+          ? (forms.first['form_name'] as String? ?? '')
+          : '';
+      if (regionalForm != null && formName == regionalForm) {
+        return form;
+      }
+      if (form['is_default'] == true) {
+        defaultForm = form;
+      }
+    }
+    return defaultForm ?? (allForms.isNotEmpty ? allForms.first as Map<String, dynamic> : null);
+  }
+
   void _reload() {
     setState(() => _allPokemons = []);
     _loadAll();
   }
 
-  List<Pokemon> _filteredPokemons(GlobalFilterProvider filter, String language) {
+  List<Pokemon> _filteredPokemons(
+    GlobalFilterProvider filter,
+    String language,
+  ) {
     var list = _allPokemons;
 
     if (filter.searchQuery.length >= 2) {
@@ -136,12 +170,18 @@ class _PokedexState extends State<Pokedex> {
 
     if (filter.selectedTypeIds.isNotEmpty) {
       list = list
-          .where((p) => filter.selectedTypeIds.every((id) => p.types.any((t) => t.id == id)))
+          .where(
+            (p) => filter.selectedTypeIds.every(
+              (id) => p.types.any((t) => t.id == id),
+            ),
+          )
           .toList();
     }
 
     if (filter.selectedGenerationId != null) {
-      list = list.where((p) => p.generationId == filter.selectedGenerationId).toList();
+      list = list
+          .where((p) => p.generationId == filter.selectedGenerationId)
+          .toList();
     }
 
     return list;
@@ -154,8 +194,11 @@ class _PokedexState extends State<Pokedex> {
 
     // Reload if the pokedex filter changed
     if (filter.filtersLoaded) {
-      final needsReload = (filter.selectedPokedexId != _loadedPokedexId) &&
-          (_loadedWithoutPokedex || _loadedPokedexId != null || filter.selectedPokedexId != null);
+      final needsReload =
+          (filter.selectedPokedexId != _loadedPokedexId) &&
+          (_loadedWithoutPokedex ||
+              _loadedPokedexId != null ||
+              filter.selectedPokedexId != null);
       if (needsReload && !_isLoading) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _reload();
@@ -181,7 +224,7 @@ class _PokedexState extends State<Pokedex> {
 
     return GridView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(6),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 8,
