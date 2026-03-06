@@ -6,6 +6,7 @@ class SearchTextField extends StatelessWidget {
   final String language;
   final ValueChanged<String> onChanged;
   final VoidCallback onCleared;
+  final FocusNode? focusNode;
 
   const SearchTextField({
     super.key,
@@ -14,6 +15,7 @@ class SearchTextField extends StatelessWidget {
     required this.language,
     required this.onChanged,
     required this.onCleared,
+    this.focusNode,
   });
 
   @override
@@ -22,6 +24,8 @@ class SearchTextField extends StatelessWidget {
       height: 44,
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
+        autofocus: true,
         decoration: InputDecoration(
         hintText: language == 'fr' ? 'Rechercher...' : 'Search...',
         prefixIcon: const Icon(Icons.search),

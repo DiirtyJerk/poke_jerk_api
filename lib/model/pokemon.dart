@@ -4,6 +4,7 @@ import 'package:poke_jerk_api/model/evolution.dart';
 import 'package:poke_jerk_api/model/move.dart';
 import 'package:poke_jerk_api/model/stat.dart';
 import 'package:poke_jerk_api/model/type_pokemon.dart';
+import 'package:poke_jerk_api/utils/string_utils.dart';
 
 class PokemonForm {
   final int id;
@@ -39,10 +40,7 @@ class PokemonForm {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }
 
 class PokemonSpecies {
@@ -123,15 +121,8 @@ class PokemonSpecies {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? '';
-  }
-
-  String getGenus(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return genus[langId] ?? genus[9] ?? '';
-  }
+  String getTranslation(String language) => localizedName(names, language, '');
+  String getGenus(String language) => localizedName(genus, language, '');
 }
 
 class PokemonVariant {
@@ -157,10 +148,7 @@ class PokemonVariant {
   String get shinySpriteUrl =>
       'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/shiny/$id.png';
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 
   factory PokemonVariant.fromJson(Map<String, dynamic> json) {
     final formsList = json['pokemon_v2_pokemonforms'] as List? ?? [];

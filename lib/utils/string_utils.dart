@@ -13,3 +13,15 @@ String normalize(String s) {
   }
   return buf.toString();
 }
+
+/// PokeAPI language id for the given app language code.
+int langId(String language) => language == 'fr' ? 5 : 9;
+
+/// Pick translated string based on current language.
+String tr(String language, String fr, String en) => language == 'fr' ? fr : en;
+
+/// Resolve a localized name from a PokeAPI `Map<int, String>` name map.
+String localizedName(Map<int, String> names, String language, [String fallback = '?']) {
+  final id = langId(language);
+  return names[id] ?? names[9] ?? fallback;
+}

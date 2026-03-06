@@ -3,6 +3,7 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/pokemon.dart';
+import 'package:poke_jerk_api/model/team_provider.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/widgets/pokemon_card.dart';
@@ -62,6 +63,7 @@ class _PokedexState extends State<Pokedex> {
         QueryOptions(
           document: gql(getPokemonsByPokedexQuery),
           variables: {'pokedexId': pokedexId},
+          fetchPolicy: FetchPolicy.cacheAndNetwork,
         ),
       );
 
@@ -108,7 +110,7 @@ class _PokedexState extends State<Pokedex> {
       QueryOptions(
         document: gql(getPokemonsQuery),
         variables: {'limit': 2000, 'offset': 0, 'where': basicWhere},
-        fetchPolicy: FetchPolicy.cacheFirst,
+        fetchPolicy: FetchPolicy.cacheAndNetwork,
       ),
     );
 
@@ -212,11 +214,11 @@ class _PokedexState extends State<Pokedex> {
   Widget _buildBody(String language, GlobalFilterProvider filter) {
     final pokemons = _filteredPokemons(filter, language);
 
-    if (_allPokemons.isEmpty && _isLoading) {
+    if (_allPokemons.isEmpty) {
       return const qr.LoadingWidget();
     }
 
-    if (pokemons.isEmpty && !_isLoading) {
+    if (pokemons.isEmpty) {
       return qr.EmptyWidget(
         message: language == 'fr' ? 'Aucun Pokémon trouvé' : 'No Pokémon found',
       );
@@ -244,6 +246,77 @@ class _PokedexState extends State<Pokedex> {
                 versionFilter: filter.versionFilter,
               ),
             ),
+          ),
+          onLongPress: () => _showAddToTeam(context, pokemon),
+        );
+      },
+    );
+  }
+
+  void _showAddToTeam(BuildContext context, Pokemon pokemon) {
+    final teamProvider = context.read<TeamProvider>();
+    final teams = teamProvider.teams;
+    final language = context.read<UserSettings>().language;
+
+    if (teams.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(language == 'fr'
+              ? 'Créez d\'abord une équipe'
+              : 'Create a team first'),
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        final availableTeams = teams.where((t) => t.pokemonIds.length < 6).toList();
+        if (availableTeams.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              language == 'fr'
+                  ? 'Toutes les équipes sont complètes'
+                  : 'All teams are full',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          );
+        }
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  language == 'fr'
+                      ? 'Ajouter ${pokemon.getTranslation(language)} à…'
+                      : 'Add ${pokemon.getTranslation(language)} to…',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ...availableTeams.map((team) => ListTile(
+                    leading: const Icon(Icons.groups),
+                    title: Text(team.name),
+                    subtitle: Text('${team.pokemonIds.length}/6'),
+                    onTap: () {
+                      teamProvider.addPokemon(team, pokemon.id);
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(language == 'fr'
+                              ? '${pokemon.getTranslation(language)} ajouté à ${team.name}'
+                              : '${pokemon.getTranslation(language)} added to ${team.name}'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  )),
+              const SizedBox(height: 8),
+            ],
           ),
         );
       },

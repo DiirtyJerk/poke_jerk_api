@@ -4,10 +4,11 @@ import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/pokedex_filter_data.dart';
 import 'package:poke_jerk_api/model/type_pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
-import 'package:poke_jerk_api/ui/items.dart';
-import 'package:poke_jerk_api/ui/moves.dart';
+import 'package:poke_jerk_api/ui/data_page.dart';
+import 'package:poke_jerk_api/ui/locations.dart';
 import 'package:poke_jerk_api/ui/pokedex.dart';
 import 'package:poke_jerk_api/ui/settings.dart';
+import 'package:poke_jerk_api/ui/team_builder.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
 import 'package:poke_jerk_api/ui/widgets/filter_bottom_sheet.dart';
 import 'package:poke_jerk_api/ui/widgets/pokedex_filter_chips.dart';
@@ -26,13 +27,26 @@ class _HomeState extends State<Home> {
   int _selectedIndex = 0;
   bool _searchOpen = false;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
-  static const List<_NavItem> _navItems = [
-    _NavItem(label: 'Pokédex', icon: Icons.catching_pokemon),
-    _NavItem(label: 'Objets', icon: Icons.inventory_2_outlined),
-    _NavItem(label: 'Capacités', icon: Icons.flash_on_outlined),
-    _NavItem(label: 'Réglages', icon: Icons.settings_outlined),
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  static const int _tabCount = 5;
+
+  static const List<_NavItem> _allNavItems = [
+    _NavItem(id: 0, labelFr: 'Pokédex', labelEn: 'Pokédex', icon: Icons.catching_pokemon),
+    _NavItem(id: 1, labelFr: 'Données', labelEn: 'Data', icon: Icons.menu_book_outlined),
+    _NavItem(id: 2, labelFr: 'Équipes', labelEn: 'Teams', icon: Icons.groups_outlined),
+    _NavItem(id: 3, labelFr: 'Lieux', labelEn: 'Locations', icon: Icons.map_outlined),
+    _NavItem(id: 4, labelFr: 'Réglages', labelEn: 'Settings', icon: Icons.settings_outlined),
   ];
+
+  static const Set<int> _filterableIds = {0, 1, 3};
 
   @override
   void didChangeDependencies() {
@@ -44,15 +58,23 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Widget _buildPage(int index) {
-    switch (index) {
+  List<int> _tabOrder(UserSettings settings) {
+    final order = settings.tabOrder;
+    if (order.length == _tabCount && order.toSet().length == _tabCount) return order;
+    return List.generate(_tabCount, (i) => i);
+  }
+
+  Widget _buildPageById(int id) {
+    switch (id) {
       case 0:
         return const Pokedex();
       case 1:
-        return const ItemsPage();
+        return const DataPage();
       case 2:
-        return const MovesPage();
+        return const TeamBuilderPage();
       case 3:
+        return const LocationsPage();
+      case 4:
         return const SettingsPage();
       default:
         return const Pokedex();
@@ -74,27 +96,41 @@ class _HomeState extends State<Home> {
       if (!_searchOpen) {
         _searchController.clear();
         context.read<GlobalFilterProvider>().setSearch('');
+        _searchFocusNode.unfocus();
       }
     });
+    if (_searchOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _searchFocusNode.requestFocus();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final language = context.watch<UserSettings>().language;
+    final settings = context.watch<UserSettings>();
+    final language = settings.language;
     final filter = context.watch<GlobalFilterProvider>();
-    final showFilters = _selectedIndex < 3;
+    final tabOrder = _tabOrder(settings);
+    final currentId = tabOrder[_selectedIndex];
+    final showFilters = _filterableIds.contains(currentId);
 
-    final titles = [
-      'PokéJerk',
-      language == 'fr' ? 'Objets' : 'Items',
-      language == 'fr' ? 'Capacités' : 'Moves',
-      language == 'fr' ? 'Réglages' : 'Settings',
-    ];
+    final currentItem = _allNavItems[currentId];
+    final title = currentId == 0
+        ? 'PokéJerk'
+        : (language == 'fr' ? currentItem.labelFr : currentItem.labelEn);
 
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 40,
-        title: Text(titles[_selectedIndex], style: const TextStyle(fontSize: 17)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(currentItem.icon, size: 20),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(fontSize: 17)),
+          ],
+        ),
         actions: [
           if (showFilters)
             IconButton(
@@ -144,6 +180,7 @@ class _HomeState extends State<Home> {
                         padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
                         child: SearchTextField(
                           controller: _searchController,
+                          focusNode: _searchFocusNode,
                           search: filter.searchQuery,
                           language: language,
                           onChanged: (value) => filter.setSearch(value.trim()),
@@ -159,19 +196,30 @@ class _HomeState extends State<Home> {
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
-              children: List.generate(4, _buildPage),
+              children: List.generate(_tabCount, (i) => _buildPageById(tabOrder[i])),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: _onTabChanged,
-        destinations: _navItems
-            .map((item) => NavigationDestination(icon: Icon(item.icon), label: item.label))
-            .toList(),
+      bottomNavigationBar: GestureDetector(
+        onLongPress: () => _showTabOrderSheet(context, settings, language),
+        child: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: _onTabChanged,
+          destinations: tabOrder.map((id) {
+            final item = _allNavItems[id];
+            return NavigationDestination(
+              icon: Icon(item.icon),
+              label: language == 'fr' ? item.labelFr : item.labelEn,
+            );
+          }).toList(),
+        ),
       ),
     );
+  }
+
+  void _showTabOrderSheet(BuildContext context, UserSettings settings, String language) {
+    showTabOrderSheet(context, settings, language);
   }
 
   String _versionLabel(String language, GlobalFilterProvider filter) {
@@ -412,11 +460,109 @@ class _HomeState extends State<Home> {
   }
 }
 
+void showTabOrderSheet(BuildContext context, UserSettings settings, String language) {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (_) => _TabOrderSheet(settings: settings, language: language),
+  );
+}
+
+class _TabOrderSheet extends StatefulWidget {
+  final UserSettings settings;
+  final String language;
+  const _TabOrderSheet({required this.settings, required this.language});
+
+  @override
+  State<_TabOrderSheet> createState() => _TabOrderSheetState();
+}
+
+class _TabOrderSheetState extends State<_TabOrderSheet> {
+  late List<int> _order;
+
+  @override
+  void initState() {
+    super.initState();
+    final stored = widget.settings.tabOrder;
+    const count = _HomeState._tabCount;
+    _order = (stored.length == count && stored.toSet().length == count)
+        ? List<int>.from(stored)
+        : List.generate(count, (i) => i);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.language == 'fr' ? 'Réorganiser les onglets' : 'Reorder tabs',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.language == 'fr'
+                ? 'Maintenez et glissez pour réorganiser'
+                : 'Hold and drag to reorder',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 8),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: _order.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                if (newIndex > oldIndex) newIndex--;
+                final item = _order.removeAt(oldIndex);
+                _order.insert(newIndex, item);
+              });
+              widget.settings.setTabOrder(List<int>.from(_order));
+            },
+            itemBuilder: (context, index) {
+              final tabId = _order[index];
+              final item = _HomeState._allNavItems[tabId];
+              final label = widget.language == 'fr' ? item.labelFr : item.labelEn;
+
+              return ListTile(
+                key: ValueKey(tabId),
+                leading: Icon(item.icon, size: 22, color: Colors.grey.shade600),
+                title: Text(label, style: const TextStyle(fontSize: 14)),
+                trailing: ReorderableDragStartListener(
+                  index: index,
+                  child: Icon(Icons.drag_handle, color: Colors.grey.shade400),
+                ),
+                dense: true,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _NavItem {
-  final String label;
+  final int id;
+  final String labelFr;
+  final String labelEn;
   final IconData icon;
 
-  const _NavItem({required this.label, required this.icon});
+  const _NavItem({required this.id, required this.labelFr, required this.labelEn, required this.icon});
 }
 
 class _FilterBar extends StatelessWidget implements PreferredSizeWidget {
@@ -484,4 +630,3 @@ class _FilterBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 }
-

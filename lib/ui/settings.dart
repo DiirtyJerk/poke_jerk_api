@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
+import 'package:poke_jerk_api/ui/home.dart';
 import 'package:provider/provider.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -8,6 +9,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<UserSettings>();
+    final language = settings.language;
 
     return ListView(
       children: [
@@ -47,6 +49,21 @@ class SettingsPage extends StatelessWidget {
             subtitle: const Text('Afficher le bouton de capture sur chaque Pokémon'),
             value: settings.capturedFeature,
             onChanged: settings.setCapturedFeature,
+          ),
+
+          const Divider(),
+
+          // Tab order
+          ListTile(
+            leading: const Icon(Icons.reorder),
+            title: Text(language == 'fr' ? 'Réorganiser les onglets' : 'Reorder tabs'),
+            subtitle: Text(
+              language == 'fr'
+                  ? 'Changer l\'ordre des onglets de navigation'
+                  : 'Change the navigation tab order',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showTabOrderSheet(context, settings, language),
           ),
         ],
       );

@@ -3,8 +3,10 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:poke_jerk_api/graphql/client.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
+import 'package:poke_jerk_api/model/team_provider.dart';
 import 'package:poke_jerk_api/model/user_pokemons.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
+import 'package:poke_jerk_api/model/user_team.dart';
 import 'package:poke_jerk_api/model/users_datas.dart';
 import 'package:poke_jerk_api/ui/home.dart';
 import 'package:provider/provider.dart';
@@ -14,9 +16,11 @@ void main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(UserSettingsAdapter());
   Hive.registerAdapter(UserPokemonsAdapter());
+  Hive.registerAdapter(UserTeamAdapter());
 
   final boxUserSettings = await Hive.openBox<UserSettings>('user_settings');
   final boxUserPokemons = await Hive.openBox<UserPokemons>('user_pokemons');
+  final boxUserTeams = await Hive.openBox<UserTeam>('user_teams');
   await Hive.openBox<dynamic>('pokedex_filters');
 
   if (boxUserSettings.isEmpty) {
@@ -35,6 +39,7 @@ void main() async {
       ChangeNotifierProvider(create: (_) => UserSettings()),
       ChangeNotifierProvider(create: (_) => UserDatas()),
       ChangeNotifierProvider(create: (_) => GlobalFilterProvider()),
+      ChangeNotifierProvider(create: (_) => TeamProvider()..init(boxUserTeams)),
     ],
     child: const MyApp(),
   ));

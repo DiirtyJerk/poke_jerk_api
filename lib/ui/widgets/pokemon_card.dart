@@ -8,8 +8,9 @@ import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 class PokemonCard extends StatelessWidget {
   final Pokemon pokemon;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  const PokemonCard({super.key, required this.pokemon, required this.onTap});
+  const PokemonCard({super.key, required this.pokemon, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +22,7 @@ class PokemonCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Card(
         color: bgColor,
         elevation: 2,

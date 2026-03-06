@@ -13,6 +13,7 @@ import 'package:poke_jerk_api/ui/widgets/filter_bottom_sheet.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/ui/widgets/version_group_chip.dart';
+import 'package:poke_jerk_api/utils/string_utils.dart';
 import 'package:provider/provider.dart';
 
 class DetailItem extends StatelessWidget {
@@ -28,7 +29,7 @@ class DetailItem extends StatelessWidget {
       options: QueryOptions(
         document: gql(getItemDetailQuery),
         variables: {'itemId': itemId},
-        fetchPolicy: FetchPolicy.cacheFirst,
+        fetchPolicy: FetchPolicy.noCache,
       ),
       builder: (result, {fetchMore, refetch}) {
         if (result.isLoading && result.data == null) {
@@ -69,9 +70,9 @@ class _DetailContentState extends State<_DetailContent> {
 
   String _localizedName(List? raw) {
     if (raw == null) return '';
-    final langId = language == 'fr' ? 5 : 9;
+    final lid = langId(language);
     for (final n in raw) {
-      if (n['language_id'] == langId) return n['name'] as String;
+      if (n['language_id'] == lid) return n['name'] as String;
     }
     for (final n in raw) {
       if (n['language_id'] == 9) return n['name'] as String;
@@ -99,9 +100,9 @@ class _DetailContentState extends State<_DetailContent> {
     // Flavor text
     final flavorTexts = data['pokemon_v2_itemflavortexts'] as List? ?? [];
     String flavorText = '';
-    final langId = language == 'fr' ? 5 : 9;
+    final lid = langId(language);
     for (final ft in flavorTexts) {
-      if (ft['language_id'] == langId) {
+      if (ft['language_id'] == lid) {
         flavorText = (ft['flavor_text'] as String? ?? '').replaceAll('\n', ' ');
         break;
       }
@@ -114,7 +115,7 @@ class _DetailContentState extends State<_DetailContent> {
     final effectTexts = data['pokemon_v2_itemeffecttexts'] as List? ?? [];
     String effectText = '';
     for (final et in effectTexts) {
-      if (et['language_id'] == langId) {
+      if (et['language_id'] == lid) {
         effectText = et['short_effect'] as String? ?? '';
         break;
       }
@@ -492,9 +493,7 @@ class _DetailContentState extends State<_DetailContent> {
                           final pkmnId = pkmnEntry.key;
                           final pkmnEntries = pkmnEntry.value;
                           final first = pkmnEntries.first;
-                          final pkmnName = first.pokemonNames[language == 'fr' ? 5 : 9] ??
-                              first.pokemonNames[9] ??
-                              '';
+                          final pkmnName = localizedName(first.pokemonNames, language, '');
                           return _HoldPokemonTile(
                             pokemonId: pkmnId,
                             name: pkmnName,

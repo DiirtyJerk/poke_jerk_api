@@ -282,6 +282,7 @@ query GetPokemonDetail($id: Int!) {
       }
     }
     pokemon_v2_encounters {
+      encounter_slot_id
       min_level
       max_level
       pokemon_v2_version {
@@ -629,6 +630,123 @@ query GetItemDetail($itemId: Int!) {
             name
             language_id
           }
+        }
+      }
+    }
+  }
+}
+''';
+
+const String getTeamPokemonDataQuery = r'''
+query GetTeamPokemonData($ids: [Int!]!) {
+  pokemon_v2_pokemon(where: {id: {_in: $ids}}, order_by: {id: asc}) {
+    id
+    name
+    pokemon_v2_pokemonstats {
+      base_stat
+      pokemon_v2_stat {
+        id
+        name
+        pokemon_v2_statnames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+      }
+    }
+    pokemon_v2_pokemontypes(order_by: {slot: asc}) {
+      pokemon_v2_type {
+        id
+        name
+        pokemon_v2_typenames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+      }
+    }
+    pokemon_v2_pokemonspecy {
+      pokemon_v2_pokemonspeciesnames(where: {language_id: {_in: [5, 9]}}) {
+        name
+        language_id
+      }
+    }
+  }
+}
+''';
+
+const String getLocationsQuery = r'''
+query GetLocations {
+  pokemon_v2_location(
+    where: {pokemon_v2_locationareas: {pokemon_v2_encounters: {id: {_is_null: false}}}}
+    order_by: {pokemon_v2_region: {id: asc}, id: asc}
+  ) {
+    id
+    name
+    pokemon_v2_region {
+      id
+      name
+      pokemon_v2_regionnames(where: {language_id: {_in: [5, 9]}}) {
+        name
+        language_id
+      }
+    }
+    pokemon_v2_locationnames(where: {language_id: {_in: [5, 9]}}) {
+      name
+      language_id
+    }
+    pokemon_v2_locationareas {
+      pokemon_v2_encounters {
+        version_id
+      }
+    }
+  }
+}
+''';
+
+const String getLocationDetailQuery = r'''
+query GetLocationDetail($locationId: Int!) {
+  pokemon_v2_encounter(
+    where: {pokemon_v2_locationarea: {location_id: {_eq: $locationId}}}
+    order_by: {pokemon_id: asc}
+  ) {
+    pokemon_id
+    encounter_slot_id
+    min_level
+    max_level
+    pokemon_v2_pokemon {
+      id
+      name
+      pokemon_v2_pokemonspecy {
+        pokemon_v2_pokemonspeciesnames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+      }
+      pokemon_v2_pokemontypes(order_by: {slot: asc}) {
+        pokemon_v2_type {
+          id
+          name
+          pokemon_v2_typenames(where: {language_id: {_in: [5, 9]}}) {
+            name
+            language_id
+          }
+        }
+      }
+    }
+    pokemon_v2_version {
+      id
+      name
+      pokemon_v2_versionnames(where: {language_id: {_in: [5, 9]}}) {
+        name
+        language_id
+      }
+    }
+    pokemon_v2_encounterslot {
+      rarity
+      pokemon_v2_encountermethod {
+        name
+        pokemon_v2_encountermethodnames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
         }
       }
     }

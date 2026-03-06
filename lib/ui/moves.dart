@@ -38,7 +38,7 @@ class _MovesPageState extends State<MovesPage> {
     final client = GraphQLProvider.of(context).value;
     final result = await client.query(QueryOptions(
       document: gql(getMovesQuery),
-      fetchPolicy: FetchPolicy.cacheFirst,
+      fetchPolicy: FetchPolicy.cacheAndNetwork,
     ));
 
     if (!mounted) return;

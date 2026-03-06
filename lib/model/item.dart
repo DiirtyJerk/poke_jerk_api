@@ -1,3 +1,5 @@
+import 'package:poke_jerk_api/utils/string_utils.dart';
+
 class Item {
   final int id;
   final String identifier;
@@ -51,20 +53,9 @@ class Item {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
-
-  String getCategoryTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return categoryNames[langId] ?? categoryNames[9] ?? '';
-  }
-
-  String getFlavorText(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return flavorTexts[langId] ?? flavorTexts[9] ?? '';
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
+  String getCategoryTranslation(String language) => localizedName(categoryNames, language, '');
+  String getFlavorText(String language) => localizedName(flavorTexts, language, '');
 
   String get spriteUrl =>
       'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/$identifier.png';

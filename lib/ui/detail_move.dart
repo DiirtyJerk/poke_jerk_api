@@ -13,6 +13,7 @@ import 'package:poke_jerk_api/ui/widgets/filter_bottom_sheet.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/version_group_chip.dart';
+import 'package:poke_jerk_api/utils/string_utils.dart';
 import 'package:provider/provider.dart';
 
 class DetailMove extends StatefulWidget {
@@ -61,7 +62,7 @@ class _DetailMoveState extends State<DetailMove> {
           'moveId': widget.moveId,
           'pokemonMovesWhere': pokemonMovesWhere,
         },
-        fetchPolicy: FetchPolicy.cacheFirst,
+        fetchPolicy: FetchPolicy.noCache,
       ),
       builder: (result, {fetchMore, refetch}) {
         if (result.isLoading && result.data == null) {
@@ -88,10 +89,10 @@ class _DetailMoveState extends State<DetailMove> {
 
         // Flavor text
         final flavorTexts = data['pokemon_v2_moveflavortexts'] as List? ?? [];
-        final langId = language == 'fr' ? 5 : 9;
+        final lid = langId(language);
         String flavorText = '';
         for (final ft in flavorTexts) {
-          if (ft['language_id'] == langId) {
+          if (ft['language_id'] == lid) {
             flavorText = (ft['flavor_text'] as String? ?? '').replaceAll('\n', ' ');
             break;
           }
@@ -417,10 +418,7 @@ class _PokemonEntry {
 
   _PokemonEntry({required this.id, required this.names, required this.types});
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? '';
-  }
+  String getTranslation(String language) => localizedName(names, language, '');
 
   String get spriteUrl =>
       'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/$id.png';

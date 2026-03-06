@@ -36,7 +36,7 @@ class _ItemsPageState extends State<ItemsPage> {
     final client = GraphQLProvider.of(context).value;
     final result = await client.query(QueryOptions(
       document: gql(getItemsQuery),
-      fetchPolicy: FetchPolicy.cacheFirst,
+      fetchPolicy: FetchPolicy.cacheAndNetwork,
     ));
 
     if (!mounted) return;

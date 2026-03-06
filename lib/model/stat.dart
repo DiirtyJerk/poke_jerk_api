@@ -1,3 +1,5 @@
+import 'package:poke_jerk_api/utils/string_utils.dart';
+
 class Stat {
   final int id;
   final String identifier;
@@ -17,8 +19,5 @@ class Stat {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }

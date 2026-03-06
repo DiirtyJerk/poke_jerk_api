@@ -1,19 +1,27 @@
+import 'package:poke_jerk_api/utils/string_utils.dart';
+
 class LocationEncounter {
+  final int locationId;
+  final String locationIdentifier;
   final Map<int, String> locationNames;
   final Map<int, String> versionNames;
   final Map<int, String> methodNames;
   final String versionIdentifier;
   final int versionId;
+  final int slotId;
   final int minLevel;
   final int maxLevel;
   final int chance;
 
   LocationEncounter({
+    required this.locationId,
+    required this.locationIdentifier,
     required this.locationNames,
     required this.versionNames,
     required this.methodNames,
     required this.versionIdentifier,
     required this.versionId,
+    required this.slotId,
     required this.minLevel,
     required this.maxLevel,
     required this.chance,
@@ -37,7 +45,6 @@ class LocationEncounter {
       }
     }
 
-    // La méthode et la rareté passent par pokemon_v2_encounterslot
     final slot = json['pokemon_v2_encounterslot'] as Map<String, dynamic>?;
     final methodNames = <int, String>{};
     final method = slot?['pokemon_v2_encountermethod'] as Map<String, dynamic>?;
@@ -48,29 +55,21 @@ class LocationEncounter {
     }
 
     return LocationEncounter(
+      locationId: location?['id'] as int? ?? 0,
+      locationIdentifier: location?['name'] as String? ?? '',
       locationNames: locationNames,
       versionNames: versionNames,
       methodNames: methodNames,
       versionIdentifier: version?['name'] as String? ?? '',
       versionId: version?['id'] as int? ?? 0,
+      slotId: json['encounter_slot_id'] as int? ?? 0,
       minLevel: json['min_level'] as int? ?? 0,
       maxLevel: json['max_level'] as int? ?? 0,
       chance: slot?['rarity'] as int? ?? 0,
     );
   }
 
-  String getLocationName(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return locationNames[langId] ?? locationNames[9] ?? '?';
-  }
-
-  String getVersionName(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return versionNames[langId] ?? versionNames[9] ?? '?';
-  }
-
-  String getMethodName(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return methodNames[langId] ?? methodNames[9] ?? '?';
-  }
+  String getLocationName(String language) => localizedName(locationNames, language);
+  String getVersionName(String language) => localizedName(versionNames, language);
+  String getMethodName(String language) => localizedName(methodNames, language);
 }

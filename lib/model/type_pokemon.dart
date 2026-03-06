@@ -1,7 +1,9 @@
+import 'package:poke_jerk_api/utils/string_utils.dart';
+
 class TypePokemon {
   final int id;
   final String identifier;
-  final Map<int, String> names; // language_id → name
+  final Map<int, String> names;
 
   TypePokemon({required this.id, required this.identifier, required this.names});
 
@@ -17,8 +19,5 @@ class TypePokemon {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }

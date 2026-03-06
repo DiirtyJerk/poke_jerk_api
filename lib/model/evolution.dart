@@ -1,4 +1,5 @@
 import 'package:poke_jerk_api/model/type_pokemon.dart';
+import 'package:poke_jerk_api/utils/string_utils.dart';
 
 /// Helper pour parser une entité avec nom localisé (item, lieu, attaque, espèce...).
 class NamedRef {
@@ -7,10 +8,7 @@ class NamedRef {
 
   NamedRef({required this.identifier, required this.names});
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 
   /// Parse un JSON avec `name` + une liste de noms localisés.
   static NamedRef? parse(Map<String, dynamic>? json, String namesKey) {
@@ -45,10 +43,7 @@ class EvolutionItem {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }
 
 class EvolutionTrigger {
@@ -68,10 +63,7 @@ class EvolutionTrigger {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }
 
 class PokemonFormVariant {
@@ -124,10 +116,7 @@ class SpeciesRef {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? '';
-  }
+  String getTranslation(String language) => localizedName(names, language, '');
 }
 
 class EvolutionDetail {
@@ -301,13 +290,13 @@ class EvolutionDetail {
     String desc = trigger?.getTranslation(language) ?? '';
     if (item != null) desc += '\n${item!.getTranslation(language)}';
     if (minLevel > 0) desc += '\nNiv. $minLevel';
-    if (genderId == 1) desc += language == 'fr' ? '\nFemelle' : '\nFemale';
-    if (genderId == 2) desc += language == 'fr' ? '\nMâle' : '\nMale';
-    if (timeOfDay == 'day') desc += language == 'fr' ? '\nJour' : '\nDay';
-    if (timeOfDay == 'night') desc += language == 'fr' ? '\nNuit' : '\nNight';
-    if (timeOfDay == 'dusk') desc += language == 'fr' ? '\nCrépuscule' : '\nDusk';
-    if (minHappiness > 0) desc += '\nBonheur >=$minHappiness';
-    if (turnUpsideDown) desc += language == 'fr' ? '\nRetourner la console' : '\nTurn upside down';
+    if (genderId == 1) desc += '\n${tr(language, 'Femelle', 'Female')}';
+    if (genderId == 2) desc += '\n${tr(language, 'Mâle', 'Male')}';
+    if (timeOfDay == 'day') desc += '\n${tr(language, 'Jour', 'Day')}';
+    if (timeOfDay == 'night') desc += '\n${tr(language, 'Nuit', 'Night')}';
+    if (timeOfDay == 'dusk') desc += '\n${tr(language, 'Crépuscule', 'Dusk')}';
+    if (minHappiness > 0) desc += '\n${tr(language, 'Bonheur', 'Happiness')} >=$minHappiness';
+    if (turnUpsideDown) desc += '\n${tr(language, 'Retourner la console', 'Turn upside down')}';
     return desc;
   }
 }

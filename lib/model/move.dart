@@ -1,4 +1,5 @@
 import 'package:poke_jerk_api/model/type_pokemon.dart';
+import 'package:poke_jerk_api/utils/string_utils.dart';
 
 class DamageClass {
   final int id;
@@ -19,10 +20,7 @@ class DamageClass {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }
 
 class Move {
@@ -73,10 +71,7 @@ class Move {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }
 
 class LearnMethod {
@@ -96,10 +91,7 @@ class LearnMethod {
     );
   }
 
-  String getTranslation(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return names[langId] ?? names[9] ?? identifier;
-  }
+  String getTranslation(String language) => localizedName(names, language, identifier);
 }
 
 class PokemonMove {
@@ -125,10 +117,7 @@ class PokemonMove {
     required this.learnMethod,
   });
 
-  String getVersionGroupName(String language) {
-    final langId = language == 'fr' ? 5 : 9;
-    return versionGroupNames[langId] ?? versionGroupNames[9] ?? versionGroupIdentifier;
-  }
+  String getVersionGroupName(String language) => localizedName(versionGroupNames, language, versionGroupIdentifier);
 
   factory PokemonMove.fromJson(Map<String, dynamic> json) {
     final vg = json['pokemon_v2_versiongroup'] as Map<String, dynamic>?;

@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:poke_jerk_api/model/pokemon.dart';
+import 'package:poke_jerk_api/model/stat.dart';
 import 'package:poke_jerk_api/model/type_chart.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
-import 'package:poke_jerk_api/ui/widgets/stat_bar.dart';
+
 
 class StatsTab extends StatelessWidget {
   final Pokemon pokemon;
@@ -19,11 +21,10 @@ class StatsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final species = pokemon.species;
-    final total = pokemon.stats.values.fold(0, (s, v) => s + v);
-
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
@@ -44,43 +45,23 @@ class StatsTab extends StatelessWidget {
           color: accentColor,
         ),
         const SizedBox(height: 8),
+        // Radar chart
         Container(
           decoration: BoxDecoration(
             color: Colors.grey.shade50,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade200),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Column(
-            children: [
-              ...pokemon.stats.entries.map(
-                (e) => StatBar(stat: e.key, value: e.value, language: language),
+          padding: const EdgeInsets.all(8),
+          child: AspectRatio(
+            aspectRatio: 1.1,
+            child: CustomPaint(
+              painter: _StatRadarPainter(
+                stats: pokemon.stats,
+                accentColor: accentColor,
+                language: language,
               ),
-              Divider(height: 1, color: Colors.grey.shade200),
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 110,
-                      child: Text(
-                        language == 'fr' ? 'Total' : 'Total',
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 40,
-                      child: Text(
-                        '$total',
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
 
@@ -447,4 +428,175 @@ class _InfoGrid extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Radar Chart Painter ──────────────────────────────────────────────────────
+
+class _StatRadarPainter extends CustomPainter {
+  final Map<Stat, int> stats;
+  final Color accentColor;
+  final String language;
+
+  _StatRadarPainter({
+    required this.stats,
+    required this.accentColor,
+    required this.language,
+  });
+
+  double get _visualMax {
+    final maxStat = stats.values.reduce(math.max).toDouble();
+    // Round up to next 25 for clean rings, min 100
+    return ((maxStat / 25).ceil() * 25).toDouble().clamp(100.0, 255.0);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 32;
+    final statEntries = stats.entries.toList();
+    final n = statEntries.length;
+    final angleStep = 2 * math.pi / n;
+    const startAngle = -math.pi / 2;
+
+    // Grid rings
+    final gridPaint = Paint()
+      ..color = Colors.grey.shade300
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    for (int ring = 1; ring <= 4; ring++) {
+      final r = radius * ring / 4;
+      final path = Path();
+      for (int i = 0; i <= n; i++) {
+        final angle = startAngle + angleStep * (i % n);
+        final pt = Offset(
+          center.dx + r * math.cos(angle),
+          center.dy + r * math.sin(angle),
+        );
+        if (i == 0) {
+          path.moveTo(pt.dx, pt.dy);
+        } else {
+          path.lineTo(pt.dx, pt.dy);
+        }
+      }
+      canvas.drawPath(path, gridPaint);
+      // Scale label
+      final scaleVal = (_visualMax * ring / 4).round();
+      final scaleTp = TextPainter(
+        text: TextSpan(
+          text: '$scaleVal',
+          style: TextStyle(fontSize: 8, color: Colors.grey.shade400),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      scaleTp.paint(canvas, Offset(center.dx + 2, center.dy - r - scaleTp.height));
+    }
+
+    // Axes
+    for (int i = 0; i < n; i++) {
+      final angle = startAngle + angleStep * i;
+      final pt = Offset(
+        center.dx + radius * math.cos(angle),
+        center.dy + radius * math.sin(angle),
+      );
+      canvas.drawLine(center, pt, gridPaint);
+    }
+
+    // Data polygon
+    final dataPath = Path();
+    final fillPaint = Paint()
+      ..color = accentColor.withValues(alpha: 0.2)
+      ..style = PaintingStyle.fill;
+    final strokePaint = Paint()
+      ..color = accentColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    for (int i = 0; i <= n; i++) {
+      final idx = i % n;
+      final val = (statEntries[idx].value / _visualMax).clamp(0.0, 1.0);
+      final angle = startAngle + angleStep * idx;
+      final pt = Offset(
+        center.dx + radius * val * math.cos(angle),
+        center.dy + radius * val * math.sin(angle),
+      );
+      if (i == 0) {
+        dataPath.moveTo(pt.dx, pt.dy);
+      } else {
+        dataPath.lineTo(pt.dx, pt.dy);
+      }
+    }
+    canvas.drawPath(dataPath, fillPaint);
+    canvas.drawPath(dataPath, strokePaint);
+
+    // Data points + labels
+    final dotPaint = Paint()
+      ..color = accentColor
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < n; i++) {
+      final entry = statEntries[i];
+      final val = (entry.value / _visualMax).clamp(0.0, 1.0);
+      final angle = startAngle + angleStep * i;
+
+      // Dot
+      final pt = Offset(
+        center.dx + radius * val * math.cos(angle),
+        center.dy + radius * val * math.sin(angle),
+      );
+      canvas.drawCircle(pt, 3.5, dotPaint);
+
+      // Label: stat name + value
+      final labelRadius = radius + 20;
+      final labelPt = Offset(
+        center.dx + labelRadius * math.cos(angle),
+        center.dy + labelRadius * math.sin(angle),
+      );
+
+      final name = _shortStatName(entry.key.identifier);
+      final tp = TextPainter(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: name,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            TextSpan(
+              text: '\n${entry.value}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: accentColor,
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      tp.paint(canvas, Offset(labelPt.dx - tp.width / 2, labelPt.dy - tp.height / 2));
+    }
+  }
+
+  String _shortStatName(String identifier) {
+    final fr = language == 'fr';
+    switch (identifier) {
+      case 'hp': return 'PV';
+      case 'attack': return fr ? 'ATQ' : 'ATK';
+      case 'defense': return fr ? 'DÉF' : 'DEF';
+      case 'special-attack': return fr ? 'A.Spé' : 'SpA';
+      case 'special-defense': return fr ? 'D.Spé' : 'SpD';
+      case 'speed': return fr ? 'VIT' : 'SPE';
+      default: return identifier;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _StatRadarPainter oldDelegate) =>
+      stats != oldDelegate.stats || accentColor != oldDelegate.accentColor;
 }

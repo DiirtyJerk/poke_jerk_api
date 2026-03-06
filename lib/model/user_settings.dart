@@ -17,6 +17,9 @@ class UserSettings extends HiveObject with ChangeNotifier {
   @HiveField(3)
   bool capturedFeature = false;
 
+  @HiveField(4)
+  List<int> tabOrder = [0, 1, 2, 3, 4];
+
   UserSettings._privateConstructor();
 
   static final UserSettings _instance = UserSettings._privateConstructor();
@@ -24,10 +27,21 @@ class UserSettings extends HiveObject with ChangeNotifier {
   factory UserSettings() => _instance;
 
   UserSettings.initialize(UserSettings userSettings) {
-    language = userSettings.language;
-    showMega = userSettings.showMega;
-    showBattle = userSettings.showBattle;
-    capturedFeature = userSettings.capturedFeature;
+    _instance.language = userSettings.language;
+    _instance.showMega = userSettings.showMega;
+    _instance.showBattle = userSettings.showBattle;
+    _instance.capturedFeature = userSettings.capturedFeature;
+    final stored = userSettings.tabOrder;
+    // Migration: reset if old 7-tab order or invalid
+    final validOrder = stored.length == 5 &&
+        stored.toSet().length == 5 &&
+        stored.every((id) => id >= 0 && id < 5);
+    _instance.tabOrder = validOrder ? List<int>.from(stored) : [0, 1, 2, 3, 4];
+    // Persist migration if needed
+    if (!validOrder && userSettings.isInBox) {
+      userSettings.tabOrder = List<int>.from(_instance.tabOrder);
+      userSettings.save();
+    }
   }
 
   void changeLanguage(String newLanguage) {
@@ -50,6 +64,12 @@ class UserSettings extends HiveObject with ChangeNotifier {
 
   void setCapturedFeature(bool value) {
     capturedFeature = value;
+    notifyListeners();
+    save();
+  }
+
+  void setTabOrder(List<int> order) {
+    tabOrder = order;
     notifyListeners();
     save();
   }

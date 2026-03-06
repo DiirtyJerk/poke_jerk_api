@@ -20,13 +20,14 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       ..language = fields[0] as String
       ..showMega = fields[1] as bool
       ..showBattle = fields[2] as bool
-      ..capturedFeature = fields[3] as bool;
+      ..capturedFeature = fields[3] as bool
+      ..tabOrder = (fields[4] as List).cast<int>();
   }
 
   @override
   void write(BinaryWriter writer, UserSettings obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.language)
       ..writeByte(1)
@@ -34,7 +35,9 @@ class UserSettingsAdapter extends TypeAdapter<UserSettings> {
       ..writeByte(2)
       ..write(obj.showBattle)
       ..writeByte(3)
-      ..write(obj.capturedFeature);
+      ..write(obj.capturedFeature)
+      ..writeByte(4)
+      ..write(obj.tabOrder);
   }
 
   @override
