@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/move.dart';
 import 'package:poke_jerk_api/model/version_filter.dart';
 import 'package:poke_jerk_api/ui/detail_move.dart';
@@ -6,6 +7,7 @@ import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
 import 'package:poke_jerk_api/ui/widgets/stat_badge.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/ui/widgets/version_selector_button.dart';
+import 'package:provider/provider.dart';
 
 // Ordre d'affichage des méthodes d'apprentissage
 const _methodOrder = ['level-up', 'machine', 'egg', 'tutor'];
@@ -32,19 +34,13 @@ class MovesTab extends StatefulWidget {
 }
 
 class _MovesTabState extends State<MovesTab> {
-  int? _selectedVersionGroupId;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.versionFilter != null) {
-      _selectedVersionGroupId = widget.versionFilter!.versionGroupId;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final externalFilter = widget.versionFilter != null;
+    final globalFilter = context.watch<GlobalFilterProvider>();
+    final effectiveSelectedId = externalFilter
+        ? widget.versionFilter!.versionGroupId
+        : globalFilter.activeVersionGroupId;
 
     // Dédupliquer les groupes de version disponibles, triés par ID
     final vgMap = <int, PokemonMove>{};
@@ -53,9 +49,17 @@ class _MovesTabState extends State<MovesTab> {
     }
     final versionGroups = vgMap.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
 
-    final filtered = _selectedVersionGroupId == null
-        ? widget.moves
-        : widget.moves.where((m) => m.versionGroupId == _selectedVersionGroupId).toList();
+    // When no version selected, deduplicate by (moveId, learnMethod, level)
+    List<PokemonMove> filtered;
+    if (effectiveSelectedId == null) {
+      final seen = <String>{};
+      filtered = widget.moves.where((m) {
+        final key = '${m.move.id}_${m.learnMethod.identifier}_${m.level}';
+        return seen.add(key);
+      }).toList();
+    } else {
+      filtered = widget.moves.where((m) => m.versionGroupId == effectiveSelectedId).toList();
+    }
 
     // Group by learn method identifier, then sort each group by level
     final grouped = <String, List<PokemonMove>>{};
@@ -79,9 +83,21 @@ class _MovesTabState extends State<MovesTab> {
         if (!externalFilter)
           VersionSelectorButton(
             versionGroups: versionGroups,
-            selectedId: _selectedVersionGroupId,
+            selectedId: effectiveSelectedId,
             language: widget.language,
-            onSelected: (id) => setState(() => _selectedVersionGroupId = id == -1 ? null : id),
+            onSelected: (id) {
+              final filter = context.read<GlobalFilterProvider>();
+              if (id == -1) {
+                filter.clearVersionGroup();
+              } else {
+                final vg = filter.versionGroupById(id);
+                if (vg != null) {
+                  filter.setVersionGroup(vg, pokedexId: vg.pokedexes.firstOrNull?.id);
+                } else {
+                  filter.setTransientVersionGroup(id, vgMap[id]?.generationId ?? 0);
+                }
+              }
+            },
           ),
         Expanded(
           child: filtered.isEmpty
@@ -128,7 +144,8 @@ class _MethodSection extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         initiallyExpanded: true,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+        minTileHeight: 40,
         childrenPadding: EdgeInsets.zero,
         title: Row(
           children: [

@@ -25,6 +25,25 @@ class GlobalFilterProvider extends ChangeNotifier {
   VersionGroup? selectedVersionGroup;
   int? selectedPokedexId;
 
+  VersionGroup? versionGroupById(int id) =>
+      _allVersionGroups.cast<VersionGroup?>()
+          .firstWhere((vg) => vg?.id == id, orElse: () => null);
+
+  // Sélection transiente (version group de moves non présent dans _allVersionGroups)
+  int? _transientVersionGroupId;
+  int? _transientGenerationId;
+
+  int? get activeVersionGroupId => selectedVersionGroup?.id ?? _transientVersionGroupId;
+  int? get activeGenerationId => selectedVersionGroup?.generationId ?? _transientGenerationId;
+
+  void setTransientVersionGroup(int id, int generationId) {
+    _transientVersionGroupId = id;
+    _transientGenerationId = generationId;
+    selectedVersionGroup = null;
+    selectedPokedexId = null;
+    notifyListeners();
+  }
+
   VersionFilter? get versionFilter {
     if (selectedVersionGroup == null) return null;
     return VersionFilter(
@@ -159,6 +178,8 @@ class GlobalFilterProvider extends ChangeNotifier {
   void setVersionGroup(VersionGroup? group, {int? pokedexId}) {
     selectedVersionGroup = group;
     selectedPokedexId = pokedexId;
+    _transientVersionGroupId = null;
+    _transientGenerationId = null;
     saveFilters();
     notifyListeners();
   }
@@ -172,6 +193,8 @@ class GlobalFilterProvider extends ChangeNotifier {
   void clearVersionGroup() {
     selectedVersionGroup = null;
     selectedPokedexId = null;
+    _transientVersionGroupId = null;
+    _transientGenerationId = null;
     saveFilters();
     notifyListeners();
   }

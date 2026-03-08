@@ -40,7 +40,9 @@ class _DetailMoveState extends State<DetailMove> {
 
     final Map<String, dynamic> pokemonMovesWhere;
     if (activeVg != null) {
-      final vgFilter = <String, dynamic>{'version_group_id': {'_eq': activeVg.id}};
+      final vgFilter = <String, dynamic>{
+        'version_group_id': {'_eq': activeVg.id},
+      };
       if (activePokedexId != null) {
         vgFilter['pokemon_v2_pokemon'] = {
           'pokemon_v2_pokemonspecy': {
@@ -66,18 +68,18 @@ class _DetailMoveState extends State<DetailMove> {
       ),
       builder: (result, {fetchMore, refetch}) {
         if (result.isLoading && result.data == null) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: const qr.LoadingWidget(),
-          );
+          return Scaffold(appBar: AppBar(), body: const qr.LoadingWidget());
         }
 
-        final data = result.data?['pokemon_v2_move_by_pk'] as Map<String, dynamic>?;
+        final data =
+            result.data?['pokemon_v2_move_by_pk'] as Map<String, dynamic>?;
         if (data == null) {
           return Scaffold(
             appBar: AppBar(),
             body: qr.EmptyWidget(
-              message: language == 'fr' ? 'Capacité introuvable' : 'Move not found',
+              message: language == 'fr'
+                  ? 'Capacité introuvable'
+                  : 'Move not found',
             ),
           );
         }
@@ -93,12 +95,16 @@ class _DetailMoveState extends State<DetailMove> {
         String flavorText = '';
         for (final ft in flavorTexts) {
           if (ft['language_id'] == lid) {
-            flavorText = (ft['flavor_text'] as String? ?? '').replaceAll('\n', ' ');
+            flavorText = (ft['flavor_text'] as String? ?? '').replaceAll(
+              '\n',
+              ' ',
+            );
             break;
           }
         }
         if (flavorText.isEmpty && flavorTexts.isNotEmpty) {
-          flavorText = (flavorTexts.first['flavor_text'] as String? ?? '').replaceAll('\n', ' ');
+          flavorText = (flavorTexts.first['flavor_text'] as String? ?? '')
+              .replaceAll('\n', ' ');
         }
 
         // Pokémon list
@@ -110,21 +116,25 @@ class _DetailMoveState extends State<DetailMove> {
           final id = pkmn['id'] as int;
           if (id > 10000) continue;
           final speciesNames = <int, String>{};
-          final species = pkmn['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
+          final species =
+              pkmn['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
           if (species != null) {
-            for (final n in (species['pokemon_v2_pokemonspeciesnames'] as List? ?? [])) {
+            for (final n
+                in (species['pokemon_v2_pokemonspeciesnames'] as List? ?? [])) {
               speciesNames[n['language_id'] as int] = n['name'] as String;
             }
           }
           final types = <TypePokemon>[];
           for (final pt in (pkmn['pokemon_v2_pokemontypes'] as List? ?? [])) {
-            types.add(TypePokemon.fromJson(pt['pokemon_v2_type'] as Map<String, dynamic>));
+            types.add(
+              TypePokemon.fromJson(
+                pt['pokemon_v2_type'] as Map<String, dynamic>,
+              ),
+            );
           }
-          pokemons.add(_PokemonEntry(
-            id: id,
-            names: speciesNames,
-            types: types,
-          ));
+          pokemons.add(
+            _PokemonEntry(id: id, names: speciesNames, types: types),
+          );
         }
 
         return Scaffold(
@@ -143,7 +153,9 @@ class _DetailMoveState extends State<DetailMove> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          HSLColor.fromColor(typeColor).withLightness(0.3).toColor(),
+                          HSLColor.fromColor(
+                            typeColor,
+                          ).withLightness(0.3).toColor(),
                           typeColor,
                         ],
                       ),
@@ -161,14 +173,19 @@ class _DetailMoveState extends State<DetailMove> {
                                 color: Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                shadows: [Shadow(color: Colors.black26, blurRadius: 4)],
+                                shadows: [
+                                  Shadow(color: Colors.black26, blurRadius: 4),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
                                 if (move.type != null)
-                                  TypeChip(type: move.type!, language: language),
+                                  TypeChip(
+                                    type: move.type!,
+                                    language: language,
+                                  ),
                                 if (move.damageClass != null) ...[
                                   const SizedBox(width: 8),
                                   _DamageClassBadge(
@@ -208,7 +225,9 @@ class _DetailMoveState extends State<DetailMove> {
                           ),
                           _StatCard(
                             label: language == 'fr' ? 'Précision' : 'Accuracy',
-                            value: move.accuracy > 0 ? '${move.accuracy}%' : '—',
+                            value: move.accuracy > 0
+                                ? '${move.accuracy}%'
+                                : '—',
                             color: typeColor,
                           ),
                           _StatCard(
@@ -222,7 +241,10 @@ class _DetailMoveState extends State<DetailMove> {
                         const SizedBox(height: 16),
                         Text(
                           flavorText,
-                          style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade700,
+                          ),
                         ),
                       ],
                     ],
@@ -232,26 +254,30 @@ class _DetailMoveState extends State<DetailMove> {
 
               // Version selector
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: () => _showVersionPicker(context, filter, language),
-                      child: activeVg != null
-                          ? VersionGroupChip(
-                              label: activeVg.getName(language),
-                              versionIdentifiers: activeVg.versionIdentifiers,
-                            )
-                          : Chip(
-                              avatar: const Icon(Icons.sports_esports_outlined, size: 16, color: Colors.black87),
-                              label: Text(
-                                language == 'fr' ? 'Version' : 'Version',
-                                style: const TextStyle(fontSize: 12, color: Colors.black87),
-                              ),
-                              visualDensity: VisualDensity.compact,
-                              side: const BorderSide(color: Color(0xFFDDDDDD)),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () => _showVersionPicker(context, filter, language),
+                    child: activeVg != null
+                        ? VersionGroupChip(
+                            label: activeVg.getName(language),
+                            versionIdentifiers: activeVg.versionIdentifiers,
+                          )
+                        : Chip(
+                            avatar: const Icon(
+                              Icons.sports_esports_outlined,
+                              size: 16,
+                              color: Colors.black87,
                             ),
-                    ),
+                            label: Text(
+                              language == 'fr' ? 'Version' : 'Version',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            side: const BorderSide(color: Color(0xFFDDDDDD)),
+                          ),
                   ),
                 ),
               ),
@@ -283,22 +309,19 @@ class _DetailMoveState extends State<DetailMove> {
               // Pokémon list
               if (pokemons.isNotEmpty)
                 SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final p = pokemons[index];
-                      return _PokemonTile(
-                        entry: p,
-                        language: language,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => DetailPokemon(pokemonId: p.id),
-                          ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final p = pokemons[index];
+                    return _PokemonTile(
+                      entry: p,
+                      language: language,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => DetailPokemon(pokemonId: p.id),
                         ),
-                      );
-                    },
-                    childCount: pokemons.length,
-                  ),
+                      ),
+                    );
+                  }, childCount: pokemons.length),
                 )
               else
                 SliverToBoxAdapter(
@@ -307,12 +330,14 @@ class _DetailMoveState extends State<DetailMove> {
                     child: Text(
                       activeVg != null
                           ? (language == 'fr'
-                              ? 'Aucun Pokémon dans ${activeVg.getName(language)}'
-                              : 'No Pokémon in ${activeVg.getName(language)}')
-                          : (language == 'fr'
-                              ? 'Aucun Pokémon'
-                              : 'No Pokémon'),
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                                ? 'Aucun Pokémon dans ${activeVg.getName(language)}'
+                                : 'No Pokémon in ${activeVg.getName(language)}')
+                          : (language == 'fr' ? 'Aucun Pokémon' : 'No Pokémon'),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
                 ),
@@ -325,7 +350,11 @@ class _DetailMoveState extends State<DetailMove> {
     );
   }
 
-  void _showVersionPicker(BuildContext context, GlobalFilterProvider filter, String language) {
+  void _showVersionPicker(
+    BuildContext context,
+    GlobalFilterProvider filter,
+    String language,
+  ) {
     if (!filter.filtersLoaded || filter.versionGroups.isEmpty) return;
     final activeVg = _localVersionGroup ?? filter.selectedVersionGroup;
 
@@ -367,11 +396,17 @@ class _DetailMoveState extends State<DetailMove> {
     );
   }
 
-  void _selectLocalVersionGroup(BuildContext context, VersionGroup group, String language) {
+  void _selectLocalVersionGroup(
+    BuildContext context,
+    VersionGroup group,
+    String language,
+  ) {
     if (group.pokedexes.length <= 1) {
       setState(() {
         _localVersionGroup = group;
-        _localPokedexId = group.pokedexes.isNotEmpty ? group.pokedexes.first.id : null;
+        _localPokedexId = group.pokedexes.isNotEmpty
+            ? group.pokedexes.first.id
+            : null;
       });
       return;
     }
@@ -383,7 +418,8 @@ class _DetailMoveState extends State<DetailMove> {
         title: Row(
           children: [
             Container(
-              width: 14, height: 14,
+              width: 14,
+              height: 14,
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 8),
@@ -391,13 +427,15 @@ class _DetailMoveState extends State<DetailMove> {
           ],
         ),
         children: group.pokedexes
-            .map((d) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(ctx, d),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Text(d.name),
-                  ),
-                ))
+            .map(
+              (d) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, d),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(d.name),
+                ),
+              ),
+            )
             .toList(),
       ),
     ).then((dex) {
@@ -434,8 +472,8 @@ class _DamageClassBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = switch (damageClass.identifier) {
       'physical' => Icons.flash_on,
-      'special'  => Icons.auto_awesome,
-      _          => Icons.remove,
+      'special' => Icons.auto_awesome,
+      _ => Icons.remove,
     };
 
     return Container(
@@ -468,7 +506,11 @@ class _StatCard extends StatelessWidget {
   final String value;
   final Color color;
 
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {

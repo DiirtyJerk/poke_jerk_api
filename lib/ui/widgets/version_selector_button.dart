@@ -102,7 +102,7 @@ class VersionSelectorButton extends StatelessWidget {
     final versionIds = selectedMove?.versionIdentifiers ?? [];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Center(
         child: GestureDetector(
           onTap: () => _showSheet(context),
@@ -112,6 +112,7 @@ class VersionSelectorButton extends StatelessWidget {
                   avatar: const Icon(Icons.sports_esports_outlined, size: 16, color: Colors.black87),
                   label: Text(label, style: const TextStyle(fontSize: 12, color: Colors.black87)),
                   visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   side: const BorderSide(color: Color(0xFFDDDDDD)),
                 ),
         ),

@@ -1,11 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:poke_jerk_api/model/evolution.dart';
+import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/move.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/widgets/colored_badge.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/ui/widgets/version_selector_button.dart';
+import 'package:provider/provider.dart';
 
 // ─── Tree data structure ─────────────────────────────────────────────────────
 
@@ -135,7 +137,7 @@ const _lineWidth = 1.5;
 
 // ─── Main widget ─────────────────────────────────────────────────────────────
 
-class EvolutionChainWidget extends StatefulWidget {
+class EvolutionChainWidget extends StatelessWidget {
   final List<EvolutionDetail> evolutions;
   final List<PokemonMove> moves;
   final String language;
@@ -154,43 +156,36 @@ class EvolutionChainWidget extends StatefulWidget {
   });
 
   @override
-  State<EvolutionChainWidget> createState() => _EvolutionChainWidgetState();
-}
-
-class _EvolutionChainWidgetState extends State<EvolutionChainWidget> {
-  int? _selectedVersionGroupId;
-
-  @override
   Widget build(BuildContext context) {
-    final hasExternalFilter = widget.externalMaxGeneration != null || widget.externalPokedexId != null;
+    final hasExternalFilter = externalMaxGeneration != null || externalPokedexId != null;
 
     final vgMap = <int, PokemonMove>{};
-    for (final m in widget.moves) {
+    for (final m in moves) {
       vgMap.putIfAbsent(m.versionGroupId, () => m);
     }
     final versionGroups = vgMap.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
 
-    int? maxGeneration = widget.externalMaxGeneration;
-    int? pokedexId = widget.externalPokedexId;
-    if (!hasExternalFilter && _selectedVersionGroupId != null) {
-      final selected = vgMap[_selectedVersionGroupId];
-      if (selected != null) {
-        maxGeneration = selected.generationId;
-      }
+    final globalFilter = context.watch<GlobalFilterProvider>();
+    final selectedVersionGroupId = !hasExternalFilter
+        ? globalFilter.activeVersionGroupId
+        : null;
+
+    int? maxGeneration = externalMaxGeneration;
+    int? pokedexId = externalPokedexId;
+    if (!hasExternalFilter && selectedVersionGroupId != null) {
+      maxGeneration = globalFilter.activeGenerationId;
     }
 
     final filteredEvolutions = (maxGeneration == null && pokedexId == null)
-        ? widget.evolutions
-        : widget.evolutions
+        ? evolutions
+        : evolutions
             .where((e) {
               bool speciesOk(SpeciesRef? sp) {
                 if (sp == null) return true;
-                // If we have a pokedex filter, check membership
                 if (pokedexId != null && sp.pokedexIds.isNotEmpty) {
                   return sp.pokedexIds.contains(pokedexId);
                 }
-                // Fallback to generation check
                 if (maxGeneration != null) {
                   return sp.generationId <= maxGeneration;
                 }
@@ -200,7 +195,7 @@ class _EvolutionChainWidgetState extends State<EvolutionChainWidget> {
             })
             .toList();
 
-    final currentFormName = _findFormName(widget.evolutions, widget.currentPokemonId);
+    final currentFormName = _findFormName(evolutions, currentPokemonId);
     final tree = _buildTree(filteredEvolutions, formName: currentFormName);
 
     return Column(
@@ -208,16 +203,27 @@ class _EvolutionChainWidgetState extends State<EvolutionChainWidget> {
         if (!hasExternalFilter && versionGroups.isNotEmpty)
           VersionSelectorButton(
             versionGroups: versionGroups,
-            selectedId: _selectedVersionGroupId,
-            language: widget.language,
-            onSelected: (id) =>
-                setState(() => _selectedVersionGroupId = id == -1 ? null : id),
+            selectedId: selectedVersionGroupId,
+            language: language,
+            onSelected: (id) {
+              final filter = context.read<GlobalFilterProvider>();
+              if (id == -1) {
+                filter.clearVersionGroup();
+              } else {
+                final vg = filter.versionGroupById(id);
+                if (vg != null) {
+                  filter.setVersionGroup(vg, pokedexId: vg.pokedexes.firstOrNull?.id);
+                } else {
+                  filter.setTransientVersionGroup(id, vgMap[id]?.generationId ?? 0);
+                }
+              }
+            },
           ),
         Expanded(
           child: tree == null
               ? Center(
                   child: Text(
-                    widget.language == 'fr'
+                    language == 'fr'
                         ? 'Pas d\'évolution'
                         : 'No evolution',
                     style: const TextStyle(color: Colors.grey),
@@ -239,7 +245,7 @@ class _EvolutionChainWidgetState extends State<EvolutionChainWidget> {
                             vertical: 16, horizontal: 16),
                         child: _NodeWidget(
                                 node: tree,
-                                language: widget.language,
+                                language: language,
                                 cardSize: cardSize,
                               ),
                       ),
@@ -510,10 +516,9 @@ class _TriggerBadges extends StatelessWidget {
     final badges = _buildBadges();
     if (badges.isEmpty) return const SizedBox.shrink();
 
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 2,
-      runSpacing: 2,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: badges,
     );
   }

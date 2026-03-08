@@ -72,6 +72,10 @@ class _MovesPageState extends State<MovesPage> {
           .toList();
     }
 
+    list = List.of(list)
+      ..sort((a, b) => normalize(a.getTranslation(language))
+          .compareTo(normalize(b.getTranslation(language))));
+
     return list;
   }
 
