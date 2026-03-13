@@ -10,6 +10,7 @@ import 'package:poke_jerk_api/ui/detail_move.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
 import 'package:poke_jerk_api/ui/widgets/filter_bottom_sheet.dart';
+import 'package:poke_jerk_api/utils/sprite_utils.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:poke_jerk_api/ui/widgets/version_group_chip.dart';
@@ -124,22 +125,6 @@ class _DetailContentState extends State<_DetailContent> {
       effectText = effectTexts.first['short_effect'] as String? ?? '';
     }
 
-    // Generations
-    final gameIndices = data['pokemon_v2_itemgameindices'] as List? ?? [];
-    final generations = <_GenerationEntry>[];
-    final seenGenIds = <int>{};
-    for (final gi in gameIndices) {
-      final genId = gi['generation_id'] as int;
-      if (seenGenIds.contains(genId)) continue;
-      seenGenIds.add(genId);
-      final gen = gi['pokemon_v2_generation'] as Map<String, dynamic>?;
-      final genName = gen != null
-          ? _localizedName(gen['pokemon_v2_generationnames'] as List?)
-          : 'Gen $genId';
-      generations.add(_GenerationEntry(id: genId, name: genName));
-    }
-    generations.sort((a, b) => a.id.compareTo(b.id));
-
     // Pokemon holding this item
     final pokemonItems = data['pokemon_v2_pokemonitems'] as List? ?? [];
     final holdEntries = <_HoldEntry>[];
@@ -226,6 +211,54 @@ class _DetailContentState extends State<_DetailContent> {
         ? machineEntries.where((m) => m.versionGroupId == activeVgId).toList()
         : machineEntries;
 
+    // Evolutions triggered by this item
+    final evoRaw = data['pokemon_v2_pokemonevolutions'] as List? ?? [];
+    final evoEntries = <_EvolutionEntry>[];
+    final seenEvoIds = <int>{};
+    for (final evo in evoRaw) {
+      final species = evo['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
+      if (species == null) continue;
+      final toSpeciesId = species['id'] as int;
+      if (seenEvoIds.contains(toSpeciesId)) continue;
+      seenEvoIds.add(toSpeciesId);
+
+      final fromSpeciesId = species['evolves_from_species_id'] as int?;
+      final generationId = species['generation_id'] as int? ?? 0;
+
+      final dexNumbers = species['pokemon_v2_pokemondexnumbers'] as List? ?? [];
+      final pokedexIds = dexNumbers.map((d) => d['pokedex_id'] as int).toSet();
+
+      final toNames = <int, String>{};
+      for (final n in (species['pokemon_v2_pokemonspeciesnames'] as List? ?? [])) {
+        toNames[n['language_id'] as int] = n['name'] as String;
+      }
+
+      final pokemons = species['pokemon_v2_pokemons'] as List? ?? [];
+      final toPokemonId = pokemons.isNotEmpty ? (pokemons.first['id'] as int) : toSpeciesId;
+
+      final toTypes = <TypePokemon>[];
+      if (pokemons.isNotEmpty) {
+        for (final pt in (pokemons.first['pokemon_v2_pokemontypes'] as List? ?? [])) {
+          toTypes.add(TypePokemon.fromJson(pt['pokemon_v2_type'] as Map<String, dynamic>));
+        }
+      }
+
+      evoEntries.add(_EvolutionEntry(
+        fromSpeciesId: fromSpeciesId,
+        toPokemonId: toPokemonId,
+        toNames: toNames,
+        toTypes: toTypes,
+        generationId: generationId,
+        pokedexIds: pokedexIds,
+      ));
+    }
+
+    // Filter evolutions by selected pokédex
+    final selectedPokedexId = filter.selectedPokedexId;
+    final filteredEvoEntries = selectedPokedexId != null
+        ? evoEntries.where((e) => e.pokedexIds.contains(selectedPokedexId)).toList()
+        : evoEntries;
+
     final spriteUrl =
         'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/$identifier.png';
 
@@ -234,81 +267,64 @@ class _DetailContentState extends State<_DetailContent> {
         slivers: [
           // ── Header ──
           SliverAppBar(
-            expandedHeight: 180,
             pinned: true,
             backgroundColor: Colors.teal,
             iconTheme: const IconThemeData(color: Colors.white),
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF00695C), Colors.teal],
+            title: Row(
+              children: [
+                CachedNetworkImage(
+                  imageUrl: spriteUrl,
+                  width: 32,
+                  height: 32,
+                  errorWidget: (_, _, _) =>
+                      const Icon(Icons.inventory_2, size: 32, color: Colors.white54),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    itemName.isNotEmpty ? itemName : identifier,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 56, 16, 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        CachedNetworkImage(
-                          imageUrl: spriteUrl,
-                          width: 64,
-                          height: 64,
-                          errorWidget: (_, _, _) =>
-                              const Icon(Icons.inventory_2, size: 64, color: Colors.white54),
+              ],
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(32),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                child: Row(
+                  children: [
+                    if (categoryName.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Text(
-                                itemName.isNotEmpty ? itemName : identifier,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [Shadow(color: Colors.black26, blurRadius: 4)],
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  if (categoryName.isNotEmpty)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        categoryName,
-                                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                                      ),
-                                    ),
-                                  if (cost > 0) ...[
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '$cost ₽',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
+                        child: Text(
+                          categoryName,
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    if (cost > 0) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '$cost ₽',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+
+
+                  ],
                 ),
               ),
             ),
@@ -349,34 +365,6 @@ class _DetailContentState extends State<_DetailContent> {
                 ),
               ),
             ),
-
-          // ── Generations ──
-          if (generations.isNotEmpty) ...[
-            _SectionHeader(
-              title: language == 'fr' ? 'Disponible depuis' : 'Available since',
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: generations.map((g) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.teal.shade200),
-                    ),
-                    child: Text(
-                      g.name,
-                      style: TextStyle(fontSize: 12, color: Colors.teal.shade700),
-                    ),
-                  )).toList(),
-                ),
-              ),
-            ),
-          ],
 
           // ── Version selector (centered chip, same style as VersionSelectorButton) ──
           SliverToBoxAdapter(
@@ -522,6 +510,101 @@ class _DetailContentState extends State<_DetailContent> {
                       : 'No Pokémon holds this item in ${activeVg!.getName(language)}',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
                 ),
+              ),
+            ),
+          ],
+
+          // ── Evolutions triggered by this item ──
+          if (filteredEvoEntries.isNotEmpty) ...[
+            _SectionHeader(
+              title: language == 'fr'
+                  ? 'Évolutions (${filteredEvoEntries.length})'
+                  : 'Evolutions (${filteredEvoEntries.length})',
+              icon: Icons.swap_horiz,
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final evo = filteredEvoEntries[index];
+                  final toName = localizedName(evo.toNames, language, '');
+                  final fromId = evo.fromSpeciesId;
+                  final toId = evo.toPokemonId;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Card(
+                      elevation: 0,
+                      color: Colors.teal.shade50,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => DetailPokemon(pokemonId: toId)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            children: [
+                              if (fromId != null) ...[
+                                CachedNetworkImage(
+                                  imageUrl: pokemonSpriteUrl(fromId),
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.contain,
+                                  placeholder: (_, _) => const SizedBox(width: 48, height: 48),
+                                  errorWidget: (_, _, _) =>
+                                      const Icon(Icons.catching_pokemon, size: 24, color: Colors.grey),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(Icons.arrow_forward, size: 18, color: Colors.teal.shade700),
+                                const SizedBox(width: 4),
+                              ],
+                              CachedNetworkImage(
+                                imageUrl: pokemonSpriteUrl(toId),
+                                width: 48,
+                                height: 48,
+                                fit: BoxFit.contain,
+                                placeholder: (_, _) => const SizedBox(width: 48, height: 48),
+                                errorWidget: (_, _, _) =>
+                                    const Icon(Icons.catching_pokemon, size: 24, color: Colors.grey),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      toName,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.teal.shade900,
+                                      ),
+                                    ),
+                                    if (evo.toTypes.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Wrap(
+                                        spacing: 4,
+                                        children: evo.toTypes
+                                            .map((t) => TypeChip(type: t, language: language, fontSize: 9))
+                                            .toList(),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '#${toId.toString().padLeft(4, '0')}',
+                                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                childCount: filteredEvoEntries.length,
               ),
             ),
           ],
@@ -749,12 +832,6 @@ class _HoldPokemonTile extends StatelessWidget {
 // Data classes
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _GenerationEntry {
-  final int id;
-  final String name;
-  _GenerationEntry({required this.id, required this.name});
-}
-
 class _HoldEntry {
   final int pokemonId;
   final Map<int, String> pokemonNames;
@@ -790,5 +867,23 @@ class _MachineEntry {
     required this.moveType,
     required this.versions,
     required this.versionGroupId,
+  });
+}
+
+class _EvolutionEntry {
+  final int? fromSpeciesId;
+  final int toPokemonId;
+  final Map<int, String> toNames;
+  final List<TypePokemon> toTypes;
+  final int generationId;
+  final Set<int> pokedexIds;
+
+  _EvolutionEntry({
+    required this.fromSpeciesId,
+    required this.toPokemonId,
+    required this.toNames,
+    required this.toTypes,
+    required this.generationId,
+    required this.pokedexIds,
   });
 }

@@ -28,6 +28,14 @@ class DetailMove extends StatefulWidget {
 class _DetailMoveState extends State<DetailMove> {
   VersionGroup? _localVersionGroup;
   int? _localPokedexId;
+  final _pokemonSearch = TextEditingController();
+  String _pokemonSearchQuery = '';
+
+  @override
+  void dispose() {
+    _pokemonSearch.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +117,7 @@ class _DetailMoveState extends State<DetailMove> {
 
         // Pokémon list
         final pokemonMoves = data['pokemon_v2_pokemonmoves'] as List? ?? [];
-        final pokemons = <_PokemonEntry>[];
+        final allPokemons = <_PokemonEntry>[];
         for (final pm in pokemonMoves) {
           final pkmn = pm['pokemon_v2_pokemon'] as Map<String, dynamic>?;
           if (pkmn == null) continue;
@@ -132,10 +140,18 @@ class _DetailMoveState extends State<DetailMove> {
               ),
             );
           }
-          pokemons.add(
+          allPokemons.add(
             _PokemonEntry(id: id, names: speciesNames, types: types),
           );
         }
+
+        final pokemons = _pokemonSearchQuery.isEmpty
+            ? allPokemons
+            : allPokemons.where((p) {
+                final q = normalize(_pokemonSearchQuery);
+                return normalize(p.getTranslation(language)).contains(q) ||
+                    p.id.toString().contains(q);
+              }).toList();
 
         return Scaffold(
           body: CustomScrollView(
@@ -305,6 +321,43 @@ class _DetailMoveState extends State<DetailMove> {
                   ),
                 ),
               ),
+
+              // Pokémon search
+              if (allPokemons.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: SizedBox(
+                      height: 44,
+                      child: TextField(
+                        controller: _pokemonSearch,
+                        decoration: InputDecoration(
+                          hintText: language == 'fr'
+                              ? 'Rechercher un Pokémon...'
+                              : 'Search Pokémon...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _pokemonSearchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _pokemonSearch.clear();
+                                    setState(
+                                        () => _pokemonSearchQuery = '');
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onChanged: (v) =>
+                            setState(() => _pokemonSearchQuery = v),
+                      ),
+                    ),
+                  ),
+                ),
 
               // Pokémon list
               if (pokemons.isNotEmpty)

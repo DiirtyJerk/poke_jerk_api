@@ -2,8 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:poke_jerk_api/model/pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
+import 'package:poke_jerk_api/model/users_datas.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
+import 'package:provider/provider.dart';
 
 class PokemonCard extends StatelessWidget {
   final Pokemon pokemon;
@@ -14,11 +16,15 @@ class PokemonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final language = UserSettings().language;
+    final settings = context.watch<UserSettings>();
+    final userDatas = context.watch<UserDatas>();
+    final language = settings.language;
     final primaryType = pokemon.types.isNotEmpty ? pokemon.types.first : null;
     final bgColor = primaryType != null
         ? ColorBuilder.getTypeColor(primaryType).withValues(alpha: 0.15)
         : Colors.grey.shade100;
+    final isCaptured = settings.capturedFeature &&
+        (userDatas.getUserPokemon(pokemon.identifier)?.captured ?? false);
 
     return GestureDetector(
       onTap: onTap,
@@ -32,18 +38,32 @@ class PokemonCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Align(
-                alignment: Alignment.topLeft,
-                child: Text(
-                  pokemon.pokedexNumber != null
-                      ? '#${pokemon.pokedexNumber.toString().padLeft(3, '0')}'
-                      : pokemon.displayId,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    pokemon.pokedexNumber != null
+                        ? '#${pokemon.pokedexNumber.toString().padLeft(3, '0')}'
+                        : pokemon.displayId,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
+                  if (settings.capturedFeature)
+                    GestureDetector(
+                      onTap: () => userDatas.capturedPokemon(
+                        pokemon.identifier,
+                        !isCaptured,
+                      ),
+                      child: Icon(
+                        isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
+                        size: 18,
+                        color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
+                      ),
+                    ),
+                ],
               ),
               Expanded(
                 child: CachedNetworkImage(

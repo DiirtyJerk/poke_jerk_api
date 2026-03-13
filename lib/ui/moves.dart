@@ -6,6 +6,7 @@ import 'package:poke_jerk_api/model/move.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/detail_move.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
+import 'package:poke_jerk_api/ui/widgets/list_loading_skeleton.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/ui/widgets/stat_badge.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
@@ -24,6 +25,7 @@ class _MovesPageState extends State<MovesPage> {
 
   List<Move> _allMoves = [];
   bool _isLoading = false;
+  String? _error;
 
   @override
   void didChangeDependencies() {
@@ -43,10 +45,16 @@ class _MovesPageState extends State<MovesPage> {
 
     if (!mounted) return;
 
+    if (result.hasException) {
+      setState(() { _error = result.exception.toString(); _isLoading = false; });
+      return;
+    }
+
     final data = result.data?['pokemon_v2_move'] as List? ?? [];
     setState(() {
       _allMoves = data.map((m) => Move.fromJson(m as Map<String, dynamic>)).toList();
       _isLoading = false;
+      _error = null;
     });
   }
 
@@ -96,7 +104,10 @@ class _MovesPageState extends State<MovesPage> {
   Widget _buildBody(String language, GlobalFilterProvider filter) {
     final filtered = _filteredMoves(filter, language);
 
-    if (_allMoves.isEmpty && _isLoading) return const qr.LoadingWidget();
+    if (_allMoves.isEmpty && _isLoading) return const MovesListSkeleton();
+    if (_error != null && _allMoves.isEmpty) {
+      return qr.ErrorWidget(message: _error!, onRetry: _loadAll);
+    }
     if (filtered.isEmpty && !_isLoading) {
       return qr.EmptyWidget(
           message: language == 'fr' ? 'Aucune capacité trouvée' : 'No moves found');

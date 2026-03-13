@@ -6,6 +6,7 @@ import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/item.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/detail_item.dart';
+import 'package:poke_jerk_api/ui/widgets/list_loading_skeleton.dart';
 import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/utils/string_utils.dart';
 import 'package:provider/provider.dart';
@@ -22,6 +23,7 @@ class _ItemsPageState extends State<ItemsPage> {
 
   List<Item> _allItems = [];
   bool _isLoading = false;
+  String? _error;
 
   @override
   void didChangeDependencies() {
@@ -41,10 +43,19 @@ class _ItemsPageState extends State<ItemsPage> {
 
     if (!mounted) return;
 
+    if (result.hasException) {
+      setState(() {
+        _error = result.exception.toString();
+        _isLoading = false;
+      });
+      return;
+    }
+
     final data = result.data?['pokemon_v2_item'] as List? ?? [];
     setState(() {
       _allItems = data.map((i) => Item.fromJson(i as Map<String, dynamic>)).toList();
       _isLoading = false;
+      _error = null;
     });
   }
 
@@ -95,7 +106,10 @@ class _ItemsPageState extends State<ItemsPage> {
   Widget _buildBody(String language, GlobalFilterProvider filter) {
     final filtered = _filteredItems(filter, language);
 
-    if (_allItems.isEmpty && _isLoading) return const qr.LoadingWidget();
+    if (_allItems.isEmpty && _isLoading) return const ItemsListSkeleton();
+    if (_error != null && _allItems.isEmpty) {
+      return qr.ErrorWidget(message: _error!, onRetry: _loadAll);
+    }
     if (filtered.isEmpty && !_isLoading) {
       return qr.EmptyWidget(
           message: language == 'fr' ? 'Aucun objet trouvé' : 'No items found');

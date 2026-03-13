@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:poke_jerk_api/graphql/client.dart';
+import 'package:poke_jerk_api/model/comparator_provider.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/team_provider.dart';
 import 'package:poke_jerk_api/model/user_pokemons.dart';
@@ -40,6 +41,7 @@ void main() async {
       ChangeNotifierProvider(create: (_) => UserDatas()),
       ChangeNotifierProvider(create: (_) => GlobalFilterProvider()),
       ChangeNotifierProvider(create: (_) => TeamProvider()..init(boxUserTeams)),
+      ChangeNotifierProvider(create: (_) => ComparatorProvider()),
     ],
     child: const MyApp(),
   ));

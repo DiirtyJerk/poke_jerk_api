@@ -5,7 +5,9 @@ import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/location.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/detail_location.dart';
+import 'package:poke_jerk_api/ui/widgets/list_loading_skeleton.dart';
 import 'package:poke_jerk_api/ui/widgets/encounter_shared.dart';
+import 'package:poke_jerk_api/ui/widgets/query_result.dart' as qr;
 import 'package:poke_jerk_api/utils/string_utils.dart';
 import 'package:provider/provider.dart';
 
@@ -20,6 +22,7 @@ class _LocationsPageState extends State<LocationsPage> {
   List<GameLocation> _allLocations = [];
   bool _loading = true;
   bool _loaded = false;
+  String? _error;
 
   @override
   void didChangeDependencies() {
@@ -34,16 +37,17 @@ class _LocationsPageState extends State<LocationsPage> {
       document: gql(getLocationsQuery),
       fetchPolicy: FetchPolicy.cacheAndNetwork,
     ));
-    if (result.data != null) {
-      final list = result.data!['pokemon_v2_location'] as List? ?? [];
-      setState(() {
-        _allLocations =
-            list.map((l) => GameLocation.fromJson(l as Map<String, dynamic>)).toList();
-        _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
+    if (result.hasException) {
+      setState(() { _error = result.exception.toString(); _loading = false; });
+      return;
     }
+    final list = result.data?['pokemon_v2_location'] as List? ?? [];
+    setState(() {
+      _allLocations =
+          list.map((l) => GameLocation.fromJson(l as Map<String, dynamic>)).toList();
+      _loading = false;
+      _error = null;
+    });
   }
 
   List<GameLocation> _filtered(String language, String search, List<int>? versionIds) {
@@ -66,8 +70,9 @@ class _LocationsPageState extends State<LocationsPage> {
 
     // Sort alphabetically by translated name
     result = List.of(result)
-      ..sort((a, b) => normalize(a.getTranslation(language))
-          .compareTo(normalize(b.getTranslation(language))));
+      ..sort((a, b) => naturalCompare(
+          normalize(a.getTranslation(language)),
+          normalize(b.getTranslation(language))));
 
     return result;
   }
@@ -81,7 +86,10 @@ class _LocationsPageState extends State<LocationsPage> {
     final locations = _filtered(language, filter.searchQuery, versionIds);
 
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const LocationsListSkeleton();
+    }
+    if (_error != null && _allLocations.isEmpty) {
+      return qr.ErrorWidget(message: _error!, onRetry: _loadAll);
     }
 
     if (locations.isEmpty) {

@@ -20,4 +20,10 @@ class Stat {
   }
 
   String getTranslation(String language) => localizedName(names, language, identifier);
+
+  @override
+  bool operator ==(Object other) => other is Stat && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

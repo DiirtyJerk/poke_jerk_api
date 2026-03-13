@@ -20,6 +20,17 @@ query GetPokemons($limit: Int!, $offset: Int!, $where: pokemon_v2_pokemon_bool_e
         }
       }
     }
+    pokemon_v2_pokemonstats {
+      base_stat
+      pokemon_v2_stat {
+        id
+        name
+        pokemon_v2_statnames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+      }
+    }
     pokemon_v2_pokemonsprites {
       sprites
     }
@@ -47,6 +58,7 @@ query GetPokemonDetail($id: Int!) {
       base_stat
       stat_id
       pokemon_v2_stat {
+        id
         name
         pokemon_v2_statnames(where: {language_id: {_in: [5, 9]}}) {
           name
@@ -515,6 +527,17 @@ query GetPokemonsByPokedex($pokedexId: Int!) {
             }
           }
         }
+        pokemon_v2_pokemonstats {
+          base_stat
+          pokemon_v2_stat {
+            id
+            name
+            pokemon_v2_statnames(where: {language_id: {_in: [5, 9]}}) {
+              name
+              language_id
+            }
+          }
+        }
         pokemon_v2_pokemonsprites {
           sprites
         }
@@ -563,15 +586,6 @@ query GetItemDetail($itemId: Int!) {
       flavor_text
       language_id
     }
-    pokemon_v2_itemgameindices {
-      generation_id
-      pokemon_v2_generation {
-        pokemon_v2_generationnames(where: {language_id: {_in: [5, 9]}}) {
-          name
-          language_id
-        }
-      }
-    }
     pokemon_v2_pokemonitems {
       rarity
       pokemon_v2_version {
@@ -598,6 +612,33 @@ query GetItemDetail($itemId: Int!) {
             pokemon_v2_typenames(where: {language_id: {_in: [5, 9]}}) {
               name
               language_id
+            }
+          }
+        }
+      }
+    }
+    pokemon_v2_pokemonevolutions {
+      pokemon_v2_pokemonspecy {
+        id
+        generation_id
+        evolves_from_species_id
+        pokemon_v2_pokemonspeciesnames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+        pokemon_v2_pokemondexnumbers {
+          pokedex_id
+        }
+        pokemon_v2_pokemons(where: {is_default: {_eq: true}}, limit: 1) {
+          id
+          pokemon_v2_pokemontypes(order_by: {slot: asc}) {
+            pokemon_v2_type {
+              id
+              name
+              pokemon_v2_typenames(where: {language_id: {_in: [5, 9]}}) {
+                name
+                language_id
+              }
             }
           }
         }

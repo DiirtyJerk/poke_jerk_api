@@ -5,10 +5,10 @@ import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/pokemon.dart';
+import 'package:poke_jerk_api/model/lightweight_pokemon.dart';
 import 'package:poke_jerk_api/model/stat.dart';
 import 'package:poke_jerk_api/model/team_provider.dart';
 import 'package:poke_jerk_api/model/type_chart.dart';
-import 'package:poke_jerk_api/model/type_pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/model/user_team.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
@@ -18,57 +18,6 @@ import 'package:poke_jerk_api/ui/widgets/search_text_field.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
 import 'package:provider/provider.dart';
 
-/// Lightweight pokemon data for team analysis.
-class _TeamMember {
-  final int id;
-  final String identifier;
-  final Map<int, String> names;
-  final List<TypePokemon> types;
-  final Map<Stat, int> stats;
-
-  _TeamMember({
-    required this.id,
-    required this.identifier,
-    required this.names,
-    required this.types,
-    required this.stats,
-  });
-
-  String getTranslation(String language) => localizedName(names, language, identifier);
-
-  String get spriteUrl =>
-      'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/$id.png';
-
-  factory _TeamMember.fromJson(Map<String, dynamic> json) {
-    final types = <TypePokemon>[];
-    for (final t in (json['pokemon_v2_pokemontypes'] as List? ?? [])) {
-      if (t['pokemon_v2_type'] != null) {
-        types.add(TypePokemon.fromJson(t['pokemon_v2_type'] as Map<String, dynamic>));
-      }
-    }
-    final stats = <Stat, int>{};
-    for (final s in (json['pokemon_v2_pokemonstats'] as List? ?? [])) {
-      if (s['pokemon_v2_stat'] != null) {
-        final stat = Stat.fromJson(s['pokemon_v2_stat'] as Map<String, dynamic>);
-        stats[stat] = s['base_stat'] as int? ?? 0;
-      }
-    }
-    final names = <int, String>{};
-    final specy = json['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
-    if (specy != null) {
-      for (final n in (specy['pokemon_v2_pokemonspeciesnames'] as List? ?? [])) {
-        names[n['language_id'] as int] = n['name'] as String;
-      }
-    }
-    return _TeamMember(
-      id: json['id'] as int,
-      identifier: json['name'] as String,
-      names: names,
-      types: types,
-      stats: stats,
-    );
-  }
-}
 
 class TeamEditorPage extends StatefulWidget {
   final UserTeam team;
@@ -79,7 +28,7 @@ class TeamEditorPage extends StatefulWidget {
 }
 
 class _TeamEditorPageState extends State<TeamEditorPage> {
-  List<_TeamMember> _members = [];
+  List<LightweightPokemon> _members = [];
   bool _loading = false;
 
   @override
@@ -103,14 +52,14 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
     ));
     if (result.data != null) {
       final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
-      final memberMap = <int, _TeamMember>{};
+      final memberMap = <int, LightweightPokemon>{};
       for (final p in list) {
-        final m = _TeamMember.fromJson(p as Map<String, dynamic>);
+        final m = LightweightPokemon.fromJson(p as Map<String, dynamic>);
         memberMap[m.id] = m;
       }
       // Maintain order from team
       setState(() {
-        _members = ids.map((id) => memberMap[id]).whereType<_TeamMember>().toList();
+        _members = ids.map((id) => memberMap[id]).whereType<LightweightPokemon>().toList();
         _loading = false;
       });
     } else {
@@ -257,7 +206,7 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
 // ─── Slot Widgets ─────────────────────────────────────────────────────────────
 
 class _SlotCard extends StatelessWidget {
-  final _TeamMember member;
+  final LightweightPokemon member;
   final String language;
   final VoidCallback onTap;
   final VoidCallback onRemove;
@@ -518,7 +467,7 @@ class _SectionTitle extends StatelessWidget {
 // ─── Type Coverage Table ──────────────────────────────────────────────────────
 
 class _TypeCoverageTable extends StatefulWidget {
-  final List<_TeamMember> members;
+  final List<LightweightPokemon> members;
   final String language;
 
   const _TypeCoverageTable({required this.members, required this.language});
@@ -790,7 +739,7 @@ class _TypeCoverageTableState extends State<_TypeCoverageTable> {
 // ─── Team Radar ──────────────────────────────────────────────────────────────
 
 class _TeamRadar extends StatefulWidget {
-  final List<_TeamMember> members;
+  final List<LightweightPokemon> members;
   final String language;
 
   const _TeamRadar({required this.members, required this.language});
@@ -1175,7 +1124,7 @@ class _TeamRadarPainter extends CustomPainter {
 // ─── Suggestions ──────────────────────────────────────────────────────────────
 
 class _Suggestions extends StatefulWidget {
-  final List<_TeamMember> members;
+  final List<LightweightPokemon> members;
   final String language;
   final UserTeam team;
   final VoidCallback onPokemonAdded;

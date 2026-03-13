@@ -4,6 +4,8 @@ import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/pokedex_filter_data.dart';
 import 'package:poke_jerk_api/model/type_pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
+import 'package:poke_jerk_api/model/comparator_provider.dart';
+import 'package:poke_jerk_api/ui/comparator.dart';
 import 'package:poke_jerk_api/ui/data_page.dart';
 import 'package:poke_jerk_api/ui/locations.dart';
 import 'package:poke_jerk_api/ui/pokedex.dart';
@@ -132,6 +134,22 @@ class _HomeState extends State<Home> {
           ],
         ),
         actions: [
+          if (currentId == 0)
+            Builder(builder: (context) {
+              final compCount = context.watch<ComparatorProvider>().count;
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: compCount > 0,
+                  label: Text('$compCount'),
+                  child: const Icon(Icons.compare_arrows),
+                ),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ComparatorPage()),
+                ),
+                tooltip: language == 'fr' ? 'Comparateur' : 'Comparator',
+              );
+            }),
           if (showFilters)
             IconButton(
               icon: Icon(_searchOpen ? Icons.search_off : Icons.search),

@@ -233,6 +233,8 @@ class Pokemon {
     return s;
   }
 
+  int get totalStats => stats.values.fold(0, (a, b) => a + b);
+
   String getTranslation(String language) {
     return species?.getTranslation(language) ?? identifier;
   }
@@ -258,6 +260,15 @@ class Pokemon {
               ?['front_default'] as String?;
     }
 
+    // Parse stats
+    final stats = <Stat, int>{};
+    for (final s in (json['pokemon_v2_pokemonstats'] as List? ?? [])) {
+      if (s['pokemon_v2_stat'] != null) {
+        final stat = Stat.fromJson(s['pokemon_v2_stat'] as Map<String, dynamic>);
+        stats[stat] = s['base_stat'] as int? ?? 0;
+      }
+    }
+
     // Construire une espèce minimale pour avoir les noms traduits
     final specyJson = json['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
     PokemonSpecies? species;
@@ -273,7 +284,7 @@ class Pokemon {
       baseExperience: 0,
       isDefault: true,
       types: types,
-      stats: {},
+      stats: stats,
       moves: [],
       forms: [],
       species: species,

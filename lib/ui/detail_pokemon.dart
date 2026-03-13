@@ -119,6 +119,10 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
                     (userData?.captured ?? false)
                         ? Icons.catching_pokemon
                         : Icons.catching_pokemon_outlined,
+                    color: (userData?.captured ?? false)
+                        ? const Color(0xFFE53935)
+                        : Colors.white70,
+                    size: 28,
                   ),
                   onPressed: () => userDatas.capturedPokemon(
                     pokemon.identifier,
