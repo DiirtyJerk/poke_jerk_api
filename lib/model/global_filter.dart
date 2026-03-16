@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -15,6 +16,7 @@ class GlobalFilterProvider extends ChangeNotifier {
   List<VersionGroup> versionGroups = []; // top-level only (no DLCs)
   List<VersionGroup> _allVersionGroups = []; // includes DLCs
   bool filtersLoaded = false;
+  String? filtersLoadError;
 
   // Recherche
   String searchQuery = '';
@@ -57,93 +59,114 @@ class GlobalFilterProvider extends ChangeNotifier {
   Future<void> loadFilters(GraphQLClient client) async {
     if (filtersLoaded) return;
 
-    final results = await Future.wait([
-      client.query(QueryOptions(document: gql(getTypesQuery))),
-      client.query(QueryOptions(document: gql(getGenerationsQuery))),
-      client.query(QueryOptions(document: gql(getVersionGroupsQuery))),
-    ]);
+    try {
+      Future<QueryResult> doQuery(String q) => client.query(QueryOptions(
+        document: gql(q),
+        fetchPolicy: FetchPolicy.networkOnly,
+      )).timeout(const Duration(seconds: 30));
 
-    final language = UserSettings().language;
+      debugPrint('[FILTERS] fetching types...');
+      final typesResult = await doQuery(getTypesQuery);
+      debugPrint('[FILTERS] types OK, fetching generations...');
+      final gensResult = await doQuery(getGenerationsQuery);
+      debugPrint('[FILTERS] generations OK, fetching versionGroups...');
+      final vgResult = await doQuery(getVersionGroupsQuery);
+      debugPrint('[FILTERS] all queries OK');
 
-    types = (results[0].data?['pokemon_v2_type'] as List? ?? [])
-        .map((t) => TypePokemon.fromJson(t as Map<String, dynamic>))
-        .toList();
+      final language = UserSettings().language;
 
-    generations = (results[1].data?['pokemon_v2_generation'] as List? ?? [])
-        .map((g) => Generation(
-              id: g['id'] as int,
-              name: _localizedName(g['pokemon_v2_generationnames'] as List, language),
-            ))
-        .toList();
+      types = (typesResult.data?['pokemon_v2_type'] as List? ?? [])
+          .map((t) => TypePokemon.fromJson(t as Map<String, dynamic>))
+          .toList();
 
-    final pokedexData = results[2].data?['pokemon_v2_pokedex'] as List? ?? [];
-    final vgMeta = <int, Map<String, dynamic>>{};
-    final vgPokedexes = <int, List<PokedexEntry>>{};
+      generations = (gensResult.data?['pokemon_v2_generation'] as List? ?? [])
+          .map((g) => Generation(
+                id: g['id'] as int,
+                name: _localizedName(g['pokemon_v2_generationnames'] as List, language),
+              ))
+          .toList();
 
-    for (final p in pokedexData) {
-      final dexName = _localizedName(p['pokemon_v2_pokedexnames'] as List, language);
-      if (dexName.isEmpty) continue;
-      final dex = PokedexEntry(id: p['id'] as int, name: dexName);
+      final pokedexData = vgResult.data?['pokemon_v2_pokedex'] as List? ?? [];
+      final vgMeta = <int, Map<String, dynamic>>{};
+      final vgPokedexes = <int, List<PokedexEntry>>{};
 
-      for (final pvg in (p['pokemon_v2_pokedexversiongroups'] as List? ?? [])) {
-        final vg = pvg['pokemon_v2_versiongroup'] as Map<String, dynamic>?;
-        if (vg == null) continue;
-        final vgId = vg['id'] as int;
-        vgMeta.putIfAbsent(vgId, () => vg);
-        vgPokedexes.putIfAbsent(vgId, () => []).add(dex);
+      for (final p in pokedexData) {
+        final dexName = _localizedName(p['pokemon_v2_pokedexnames'] as List, language);
+        if (dexName.isEmpty) continue;
+        final dex = PokedexEntry(id: p['id'] as int, name: dexName);
+
+        for (final pvg in (p['pokemon_v2_pokedexversiongroups'] as List? ?? [])) {
+          final vg = pvg['pokemon_v2_versiongroup'] as Map<String, dynamic>?;
+          if (vg == null) continue;
+          final vgId = vg['id'] as int;
+          vgMeta.putIfAbsent(vgId, () => vg);
+          vgPokedexes.putIfAbsent(vgId, () => []).add(dex);
+        }
       }
-    }
 
-    // Build all version groups (including DLCs)
-    final allVgs = vgMeta.entries
-        .map((entry) {
-          final vgId = entry.key;
-          final vg = entry.value;
-          final namesFr = <String>[];
-          final namesEn = <String>[];
-          final versionIdentifiers = <String>[];
-          final versionIds = <int>[];
-          for (final v in (vg['pokemon_v2_versions'] as List? ?? [])) {
-            final vId = v['name'] as String?;
-            if (vId != null && vId.isNotEmpty) versionIdentifiers.add(vId);
-            if (v['id'] != null) versionIds.add(v['id'] as int);
-            for (final n in (v['pokemon_v2_versionnames'] as List? ?? [])) {
-              if (n['language_id'] == 5) namesFr.add(n['name'] as String);
-              if (n['language_id'] == 9) namesEn.add(n['name'] as String);
+      // Build all version groups (including DLCs)
+      final allVgs = vgMeta.entries
+          .map((entry) {
+            final vgId = entry.key;
+            final vg = entry.value;
+            final namesFr = <String>[];
+            final namesEn = <String>[];
+            final versionIdentifiers = <String>[];
+            final versionIds = <int>[];
+            for (final v in (vg['pokemon_v2_versions'] as List? ?? [])) {
+              final vId = v['name'] as String?;
+              if (vId != null && vId.isNotEmpty) versionIdentifiers.add(vId);
+              if (v['id'] != null) versionIds.add(v['id'] as int);
+              for (final n in (v['pokemon_v2_versionnames'] as List? ?? [])) {
+                if (n['language_id'] == 5) namesFr.add(n['name'] as String);
+                if (n['language_id'] == 9) namesEn.add(n['name'] as String);
+              }
             }
-          }
-          if (namesEn.isEmpty) return null;
-          return VersionGroup(
-            id: vgId,
-            generationId: vg['generation_id'] as int? ?? 0,
-            identifier: vg['name'] as String? ?? '',
-            versionIdentifiers: versionIdentifiers,
-            versionIds: versionIds,
-            nameFr: namesFr.join(' / '),
-            nameEn: namesEn.join(' / '),
-            pokedexes: vgPokedexes[vgId] ?? [],
-            parentId: VersionGroup.dlcParentMap[vgId],
-          );
-        })
-        .whereType<VersionGroup>()
-        .toList()
-      ..sort((a, b) => a.id.compareTo(b.id));
+            if (namesEn.isEmpty) return null;
+            return VersionGroup(
+              id: vgId,
+              generationId: vg['generation_id'] as int? ?? 0,
+              identifier: vg['name'] as String? ?? '',
+              versionIdentifiers: versionIdentifiers,
+              versionIds: versionIds,
+              nameFr: namesFr.join(' / '),
+              nameEn: namesEn.join(' / '),
+              pokedexes: vgPokedexes[vgId] ?? [],
+              parentId: VersionGroup.dlcParentMap[vgId],
+            );
+          })
+          .whereType<VersionGroup>()
+          .toList()
+        ..sort((a, b) => a.id.compareTo(b.id));
 
-    // Attach DLCs to their parent version groups
-    final vgById = <int, VersionGroup>{for (final vg in allVgs) vg.id: vg};
-    for (final vg in allVgs) {
-      if (vg.parentId != null && vgById.containsKey(vg.parentId)) {
-        vgById[vg.parentId]!.dlcChildren.add(vg);
+      // Attach DLCs to their parent version groups
+      final vgById = <int, VersionGroup>{for (final vg in allVgs) vg.id: vg};
+      for (final vg in allVgs) {
+        if (vg.parentId != null && vgById.containsKey(vg.parentId)) {
+          vgById[vg.parentId]!.dlcChildren.add(vg);
+        }
       }
+
+      // Keep a flat list for lookup, but top-level list excludes DLCs
+      _allVersionGroups = allVgs;
+      versionGroups = allVgs.where((vg) => !vg.isDlc).toList();
+
+      restoreFilters();
+    } catch (e) {
+      debugPrint('loadFilters failed: $e');
+      filtersLoadError = e.toString();
     }
 
-    // Keep a flat list for lookup, but top-level list excludes DLCs
-    _allVersionGroups = allVgs;
-    versionGroups = allVgs.where((vg) => !vg.isDlc).toList();
-
+    // Always mark as loaded so the app doesn't stay stuck on skeleton
     filtersLoaded = true;
-    restoreFilters();
     notifyListeners();
+  }
+
+  Future<void> retryLoadFilters(GraphQLClient client) async {
+    filtersLoaded = false;
+    filtersLoadError = null;
+    notifyListeners();
+    await loadFilters(client);
   }
 
   void saveFilters() {
@@ -155,24 +178,32 @@ class GlobalFilterProvider extends ChangeNotifier {
   }
 
   void restoreFilters() {
-    final box = Hive.box<dynamic>('pokedex_filters');
-    final savedTypeIds = (box.get('typeIds') as List?)?.cast<int>() ?? [];
-    final savedGenId = box.get('genId') as int?;
-    final savedVgId = box.get('vgId') as int?;
-    final savedDexId = box.get('dexId') as int?;
+    try {
+      final box = Hive.box<dynamic>('pokedex_filters');
+      final savedTypeIds = (box.get('typeIds') as List?)?.cast<int>() ?? [];
+      final savedGenId = box.get('genId') as int?;
+      final savedVgId = box.get('vgId') as int?;
+      final savedDexId = box.get('dexId') as int?;
 
-    VersionGroup? vg;
-    if (savedVgId != null) {
-      vg = _allVersionGroups.cast<VersionGroup?>().firstWhere(
-        (v) => v?.id == savedVgId,
-        orElse: () => null,
-      );
+      VersionGroup? vg;
+      if (savedVgId != null) {
+        vg = _allVersionGroups.cast<VersionGroup?>().firstWhere(
+          (v) => v?.id == savedVgId,
+          orElse: () => null,
+        );
+      }
+
+      selectedTypeIds = savedTypeIds;
+      selectedGenerationId = savedGenId;
+      selectedVersionGroup = vg;
+      selectedPokedexId = savedDexId;
+    } catch (e) {
+      debugPrint('restoreFilters failed, resetting: $e');
+      selectedTypeIds = [];
+      selectedGenerationId = null;
+      selectedVersionGroup = null;
+      selectedPokedexId = null;
     }
-
-    selectedTypeIds = savedTypeIds;
-    selectedGenerationId = savedGenId;
-    selectedVersionGroup = vg;
-    selectedPokedexId = savedDexId;
   }
 
   void setVersionGroup(VersionGroup? group, {int? pokedexId}) {

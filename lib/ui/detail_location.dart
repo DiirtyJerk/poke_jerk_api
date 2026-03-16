@@ -30,22 +30,30 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
   }
 
   Future<void> _loadEncounters() async {
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(getLocationDetailQuery),
-      variables: {'locationId': widget.location.id},
-      fetchPolicy: FetchPolicy.noCache,
-    ));
-    if (result.data != null) {
-      final list = result.data!['pokemon_v2_encounter'] as List? ?? [];
-      setState(() {
-        _encounters = list
-            .map((e) => LocationPokemonEncounter.fromJson(e as Map<String, dynamic>))
-            .toList();
-        _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
+    try {
+      final client = GraphQLProvider.of(context).value;
+      debugPrint('[DetailLocation] fetching encounters for location ${widget.location.id}...');
+      final result = await client.query(QueryOptions(
+        document: gql(getLocationDetailQuery),
+        variables: {'locationId': widget.location.id},
+        fetchPolicy: FetchPolicy.noCache,
+      )).timeout(const Duration(seconds: 30));
+      debugPrint('[DetailLocation] encounters query OK');
+      if (!mounted) return;
+      if (result.data != null) {
+        final list = result.data!['pokemon_v2_encounter'] as List? ?? [];
+        setState(() {
+          _encounters = list
+              .map((e) => LocationPokemonEncounter.fromJson(e as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+      } else {
+        setState(() => _loading = false);
+      }
+    } catch (e) {
+      debugPrint('[DetailLocation] _loadEncounters timeout/error: $e');
+      if (mounted) setState(() => _loading = false);
     }
   }
 

@@ -30,40 +30,52 @@ class TeamEditorPage extends StatefulWidget {
 class _TeamEditorPageState extends State<TeamEditorPage> {
   List<LightweightPokemon> _members = [];
   bool _loading = false;
+  bool _initialLoaded = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _loadMembers();
+    if (!_initialLoaded) {
+      _initialLoaded = true;
+      _loadMembers();
+    }
   }
 
   Future<void> _loadMembers() async {
     final ids = widget.team.pokemonIds;
     if (ids.isEmpty) {
-      setState(() => _members = []);
+      if (mounted) setState(() { _members = []; _loading = false; });
       return;
     }
     setState(() => _loading = true);
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(getTeamPokemonDataQuery),
-      variables: {'ids': ids},
-      fetchPolicy: FetchPolicy.cacheAndNetwork,
-    ));
-    if (result.data != null) {
-      final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
-      final memberMap = <int, LightweightPokemon>{};
-      for (final p in list) {
-        final m = LightweightPokemon.fromJson(p as Map<String, dynamic>);
-        memberMap[m.id] = m;
+    try {
+      final client = GraphQLProvider.of(context).value;
+      debugPrint('[TeamEditor] fetching members $ids...');
+      final result = await client.query(QueryOptions(
+        document: gql(getTeamPokemonDataQuery),
+        variables: {'ids': ids},
+        fetchPolicy: FetchPolicy.cacheAndNetwork,
+      )).timeout(const Duration(seconds: 30));
+      debugPrint('[TeamEditor] members query OK');
+      if (!mounted) return;
+      if (result.data != null) {
+        final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
+        final memberMap = <int, LightweightPokemon>{};
+        for (final p in list) {
+          final m = LightweightPokemon.fromJson(p as Map<String, dynamic>);
+          memberMap[m.id] = m;
+        }
+        // Maintain order from team
+        setState(() {
+          _members = ids.map((id) => memberMap[id]).whereType<LightweightPokemon>().toList();
+          _loading = false;
+        });
+      } else {
+        setState(() => _loading = false);
       }
-      // Maintain order from team
-      setState(() {
-        _members = ids.map((id) => memberMap[id]).whereType<LightweightPokemon>().toList();
-        _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
+    } catch (e) {
+      debugPrint('[TeamEditor] _loadMembers timeout/error: $e');
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -335,24 +347,32 @@ class _PokemonPickerState extends State<_PokemonPicker> {
   }
 
   Future<void> _loadPokemon() async {
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(getPokemonsQuery),
-      variables: {
-        'limit': 2000,
-        'offset': 0,
-        'where': {'is_default': {'_eq': true}},
-      },
-      fetchPolicy: FetchPolicy.cacheAndNetwork,
-    ));
-    if (result.data != null) {
-      final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
-      setState(() {
-        _allPokemon = list
-            .map((p) => Pokemon.fromListJson(p as Map<String, dynamic>))
-            .toList();
-        _loading = false;
-      });
+    try {
+      final client = GraphQLProvider.of(context).value;
+      debugPrint('[TeamEditor] fetching pokemon list (picker)...');
+      final result = await client.query(QueryOptions(
+        document: gql(getPokemonsQuery),
+        variables: {
+          'limit': 2000,
+          'offset': 0,
+          'where': {'is_default': {'_eq': true}},
+        },
+        fetchPolicy: FetchPolicy.cacheAndNetwork,
+      )).timeout(const Duration(seconds: 30));
+      debugPrint('[TeamEditor] pokemon list (picker) OK');
+      if (!mounted) return;
+      if (result.data != null) {
+        final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
+        setState(() {
+          _allPokemon = list
+              .map((p) => Pokemon.fromListJson(p as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[TeamEditor] _loadPokemon (picker) timeout/error: $e');
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -1157,45 +1177,54 @@ class _SuggestionsState extends State<_Suggestions> {
 
   Future<void> _loadCandidates(int? pokedexId) async {
     setState(() => _loading = true);
-    final client = GraphQLProvider.of(context).value;
+    try {
+      final client = GraphQLProvider.of(context).value;
+      const timeout = Duration(seconds: 30);
 
-    if (pokedexId != null) {
-      final result = await client.query(QueryOptions(
-        document: gql(getPokemonsByPokedexQuery),
-        variables: {'pokedexId': pokedexId},
-        fetchPolicy: FetchPolicy.cacheAndNetwork,
-      ));
-      if (result.data != null && mounted) {
-        final entries = result.data!['pokemon_v2_pokemondexnumber'] as List? ?? [];
-        _candidatePool = entries.expand((e) {
-          final specy = e['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
-          if (specy == null) return <Pokemon>[];
-          final pokemons = specy['pokemon_v2_pokemons'] as List? ?? [];
-          return pokemons
-              .where((p) => p['is_default'] == true)
-              .map((p) {
-                final merged = Map<String, dynamic>.from(p as Map<String, dynamic>);
-                merged['pokemon_v2_pokemonspecy'] = specy;
-                return Pokemon.fromListJson(merged);
-              });
-        }).toList();
+      if (pokedexId != null) {
+        debugPrint('[TeamEditor] fetching candidates by pokedex $pokedexId...');
+        final result = await client.query(QueryOptions(
+          document: gql(getPokemonsByPokedexQuery),
+          variables: {'pokedexId': pokedexId},
+          fetchPolicy: FetchPolicy.cacheAndNetwork,
+        )).timeout(timeout);
+        debugPrint('[TeamEditor] candidates (pokedex) OK');
+        if (result.data != null && mounted) {
+          final entries = result.data!['pokemon_v2_pokemondexnumber'] as List? ?? [];
+          _candidatePool = entries.expand((e) {
+            final specy = e['pokemon_v2_pokemonspecy'] as Map<String, dynamic>?;
+            if (specy == null) return <Pokemon>[];
+            final pokemons = specy['pokemon_v2_pokemons'] as List? ?? [];
+            return pokemons
+                .where((p) => p['is_default'] == true)
+                .map((p) {
+                  final merged = Map<String, dynamic>.from(p as Map<String, dynamic>);
+                  merged['pokemon_v2_pokemonspecy'] = specy;
+                  return Pokemon.fromListJson(merged);
+                });
+          }).toList();
+        }
+      } else {
+        debugPrint('[TeamEditor] fetching all candidates...');
+        final result = await client.query(QueryOptions(
+          document: gql(getPokemonsQuery),
+          variables: {
+            'limit': 2000,
+            'offset': 0,
+            'where': {'is_default': {'_eq': true}},
+          },
+          fetchPolicy: FetchPolicy.cacheAndNetwork,
+        )).timeout(timeout);
+        debugPrint('[TeamEditor] all candidates OK');
+        if (result.data != null && mounted) {
+          final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
+          _candidatePool = list
+              .map((p) => Pokemon.fromListJson(p as Map<String, dynamic>))
+              .toList();
+        }
       }
-    } else {
-      final result = await client.query(QueryOptions(
-        document: gql(getPokemonsQuery),
-        variables: {
-          'limit': 2000,
-          'offset': 0,
-          'where': {'is_default': {'_eq': true}},
-        },
-        fetchPolicy: FetchPolicy.cacheAndNetwork,
-      ));
-      if (result.data != null && mounted) {
-        final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
-        _candidatePool = list
-            .map((p) => Pokemon.fromListJson(p as Map<String, dynamic>))
-            .toList();
-      }
+    } catch (e) {
+      debugPrint('[TeamEditor] _loadCandidates timeout/error: $e');
     }
     if (mounted) setState(() => _loading = false);
   }

@@ -30,6 +30,7 @@ class _HomeState extends State<Home> {
   bool _searchOpen = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final Set<int> _visitedTabs = {0}; // tab 0 (Pokédex) always loaded
 
   @override
   void dispose() {
@@ -89,6 +90,8 @@ class _HomeState extends State<Home> {
       context.read<GlobalFilterProvider>().setSearch('');
       _searchOpen = false;
     }
+    final tabOrder = _tabOrder(context.read<UserSettings>());
+    _visitedTabs.add(tabOrder[i]);
     setState(() => _selectedIndex = i);
   }
 
@@ -214,7 +217,11 @@ class _HomeState extends State<Home> {
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
-              children: List.generate(_tabCount, (i) => _buildPageById(tabOrder[i])),
+              children: List.generate(_tabCount, (i) {
+                final id = tabOrder[i];
+                if (!_visitedTabs.contains(id)) return const SizedBox.shrink();
+                return _buildPageById(id);
+              }),
             ),
           ),
         ],

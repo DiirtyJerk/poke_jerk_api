@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:poke_jerk_api/graphql/graphql_helper.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/move.dart';
@@ -35,27 +35,23 @@ class _MovesPageState extends State<MovesPage> {
 
   Future<void> _loadAll() async {
     if (_isLoading) return;
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _error = null; });
 
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(getMovesQuery),
-      fetchPolicy: FetchPolicy.cacheAndNetwork,
-    ));
-
-    if (!mounted) return;
-
-    if (result.hasException) {
-      setState(() { _error = result.exception.toString(); _isLoading = false; });
-      return;
+    try {
+      final moves = await safeQuery<List<Move>>(
+        context: context,
+        query: getMovesQuery,
+        tag: 'Moves',
+        parser: (data) => (data['pokemon_v2_move'] as List)
+            .map((m) => Move.fromJson(m as Map<String, dynamic>))
+            .toList(),
+      );
+      if (!mounted) return;
+      setState(() { _allMoves = moves; _isLoading = false; });
+    } catch (e) {
+      debugPrint('[Moves] _loadAll error: $e');
+      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
     }
-
-    final data = result.data?['pokemon_v2_move'] as List? ?? [];
-    setState(() {
-      _allMoves = data.map((m) => Move.fromJson(m as Map<String, dynamic>)).toList();
-      _isLoading = false;
-      _error = null;
-    });
   }
 
   List<Move> _filteredMoves(GlobalFilterProvider filter, String language) {
@@ -63,26 +59,19 @@ class _MovesPageState extends State<MovesPage> {
 
     if (filter.searchQuery.length >= 2) {
       final query = normalize(filter.searchQuery);
-      list = list
-          .where((m) => normalize(m.getTranslation(language)).contains(query))
-          .toList();
+      list = list.where((m) => normalize(m.getTranslation(language)).contains(query)).toList();
     }
 
     if (filter.selectedGenerationId != null) {
-      list = list
-          .where((m) => m.generationId != null && m.generationId! <= filter.selectedGenerationId!)
-          .toList();
+      list = list.where((m) => m.generationId != null && m.generationId! <= filter.selectedGenerationId!).toList();
     }
 
     if (filter.selectedTypeIds.isNotEmpty) {
-      list = list
-          .where((m) => m.type != null && filter.selectedTypeIds.contains(m.type!.id))
-          .toList();
+      list = list.where((m) => m.type != null && filter.selectedTypeIds.contains(m.type!.id)).toList();
     }
 
     list = List.of(list)
-      ..sort((a, b) => normalize(a.getTranslation(language))
-          .compareTo(normalize(b.getTranslation(language))));
+      ..sort((a, b) => normalize(a.getTranslation(language)).compareTo(normalize(b.getTranslation(language))));
 
     return list;
   }
@@ -97,11 +86,6 @@ class _MovesPageState extends State<MovesPage> {
   Widget build(BuildContext context) {
     final language = context.watch<UserSettings>().language;
     final filter = context.watch<GlobalFilterProvider>();
-
-    return _buildBody(language, filter);
-  }
-
-  Widget _buildBody(String language, GlobalFilterProvider filter) {
     final filtered = _filteredMoves(filter, language);
 
     if (_allMoves.isEmpty && _isLoading) return const MovesListSkeleton();
@@ -109,17 +93,14 @@ class _MovesPageState extends State<MovesPage> {
       return qr.ErrorWidget(message: _error!, onRetry: _loadAll);
     }
     if (filtered.isEmpty && !_isLoading) {
-      return qr.EmptyWidget(
-          message: language == 'fr' ? 'Aucune capacité trouvée' : 'No moves found');
+      return qr.EmptyWidget(message: tr(language, 'Aucune capacité trouvée', 'No moves found'));
     }
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 4),
       itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        return _MoveCard(move: filtered[index], language: language);
-      },
+      itemBuilder: (context, index) => _MoveCard(move: filtered[index], language: language),
     );
   }
 }
@@ -132,10 +113,7 @@ class _MoveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final typeColor = move.type != null
-        ? ColorBuilder.getTypeColor(move.type!)
-        : Colors.grey;
-
+    final typeColor = move.type != null ? ColorBuilder.getTypeColor(move.type!) : Colors.grey;
     final damageIcon = switch (move.damageClass?.identifier) {
       'physical' => Icons.flash_on,
       'special'  => Icons.auto_awesome,
@@ -160,13 +138,8 @@ class _MoveCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
-              SizedBox(
-                width: 36,
-                child: Icon(damageIcon, size: 16, color: typeColor),
-              ),
-
+              SizedBox(width: 36, child: Icon(damageIcon, size: 16, color: typeColor)),
               const SizedBox(width: 4),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,8 +151,7 @@ class _MoveCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        if (move.type != null)
-                          TypeChip(type: move.type!, language: language, fontSize: 10),
+                        if (move.type != null) TypeChip(type: move.type!, language: language, fontSize: 10),
                         const SizedBox(width: 6),
                         Icon(damageIcon, size: 12, color: Colors.grey.shade500),
                         const SizedBox(width: 2),
@@ -192,24 +164,14 @@ class _MoveCard extends StatelessWidget {
                   ],
                 ),
               ),
-
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  StatBadge(
-                    label: language == 'fr' ? 'Puiss.' : 'Power',
-                    value: move.power > 0 ? '${move.power}' : '—',
-                  ),
+                  StatBadge(label: tr(language, 'Puiss.', 'Power'), value: move.power > 0 ? '${move.power}' : '—'),
                   const SizedBox(width: 10),
-                  StatBadge(
-                    label: 'PP',
-                    value: move.pp > 0 ? '${move.pp}' : '—',
-                  ),
+                  StatBadge(label: 'PP', value: move.pp > 0 ? '${move.pp}' : '—'),
                   const SizedBox(width: 10),
-                  StatBadge(
-                    label: language == 'fr' ? 'Préc.' : 'Acc.',
-                    value: move.accuracy > 0 ? '${move.accuracy}%' : '—',
-                  ),
+                  StatBadge(label: tr(language, 'Préc.', 'Acc.'), value: move.accuracy > 0 ? '${move.accuracy}%' : '—'),
                 ],
               ),
             ],

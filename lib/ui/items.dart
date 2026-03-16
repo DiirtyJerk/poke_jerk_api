@@ -1,6 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:poke_jerk_api/graphql/graphql_helper.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/item.dart';
@@ -33,30 +33,23 @@ class _ItemsPageState extends State<ItemsPage> {
 
   Future<void> _loadAll() async {
     if (_isLoading) return;
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _error = null; });
 
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(getItemsQuery),
-      fetchPolicy: FetchPolicy.cacheAndNetwork,
-    ));
-
-    if (!mounted) return;
-
-    if (result.hasException) {
-      setState(() {
-        _error = result.exception.toString();
-        _isLoading = false;
-      });
-      return;
+    try {
+      final items = await safeQuery<List<Item>>(
+        context: context,
+        query: getItemsQuery,
+        tag: 'Items',
+        parser: (data) => (data['pokemon_v2_item'] as List)
+            .map((i) => Item.fromJson(i as Map<String, dynamic>))
+            .toList(),
+      );
+      if (!mounted) return;
+      setState(() { _allItems = items; _isLoading = false; });
+    } catch (e) {
+      debugPrint('[Items] _loadAll error: $e');
+      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
     }
-
-    final data = result.data?['pokemon_v2_item'] as List? ?? [];
-    setState(() {
-      _allItems = data.map((i) => Item.fromJson(i as Map<String, dynamic>)).toList();
-      _isLoading = false;
-      _error = null;
-    });
   }
 
   List<Item> _filteredItems(GlobalFilterProvider filter, String language) {
@@ -64,26 +57,16 @@ class _ItemsPageState extends State<ItemsPage> {
 
     if (filter.searchQuery.length >= 2) {
       final query = normalize(filter.searchQuery);
-      list = list
-          .where((i) => normalize(i.getTranslation(language)).contains(query))
-          .toList();
+      list = list.where((i) => normalize(i.getTranslation(language)).contains(query)).toList();
     }
 
     if (filter.selectedVersionGroup != null) {
       final maxGen = filter.selectedVersionGroup!.generationId;
-      list = list
-          .where((i) =>
-              i.generationIds.isEmpty ||
-              i.generationIds.any((g) => g <= maxGen))
-          .toList();
+      list = list.where((i) => i.generationIds.isEmpty || i.generationIds.any((g) => g <= maxGen)).toList();
     }
 
     if (filter.selectedGenerationId != null) {
-      list = list
-          .where((i) =>
-              i.generationIds.isEmpty ||
-              i.generationIds.any((g) => g <= filter.selectedGenerationId!))
-          .toList();
+      list = list.where((i) => i.generationIds.isEmpty || i.generationIds.any((g) => g <= filter.selectedGenerationId!)).toList();
     }
 
     return list;
@@ -99,11 +82,6 @@ class _ItemsPageState extends State<ItemsPage> {
   Widget build(BuildContext context) {
     final language = context.watch<UserSettings>().language;
     final filter = context.watch<GlobalFilterProvider>();
-
-    return _buildBody(language, filter);
-  }
-
-  Widget _buildBody(String language, GlobalFilterProvider filter) {
     final filtered = _filteredItems(filter, language);
 
     if (_allItems.isEmpty && _isLoading) return const ItemsListSkeleton();
@@ -111,17 +89,14 @@ class _ItemsPageState extends State<ItemsPage> {
       return qr.ErrorWidget(message: _error!, onRetry: _loadAll);
     }
     if (filtered.isEmpty && !_isLoading) {
-      return qr.EmptyWidget(
-          message: language == 'fr' ? 'Aucun objet trouvé' : 'No items found');
+      return qr.EmptyWidget(message: tr(language, 'Aucun objet trouvé', 'No items found'));
     }
 
     return ListView.separated(
       controller: _scrollController,
       itemCount: filtered.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        return _ItemTile(item: filtered[index], language: language);
-      },
+      itemBuilder: (context, index) => _ItemTile(item: filtered[index], language: language),
     );
   }
 }

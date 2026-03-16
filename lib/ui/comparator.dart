@@ -68,11 +68,13 @@ class _ComparatorPageState extends State<ComparatorPage> {
     setState(() => _loading = true);
     try {
       final client = GraphQLProvider.of(context).value;
+      debugPrint('[Comparator] fetching pokemon $pokemonId...');
       final result = await client.query(QueryOptions(
         document: gql(getTeamPokemonDataQuery),
         variables: {'ids': [pokemonId]},
         fetchPolicy: FetchPolicy.noCache,
-      ));
+      )).timeout(const Duration(seconds: 30));
+      debugPrint('[Comparator] pokemon $pokemonId OK');
       if (!mounted) return;
       if (result.data != null) {
         final list = result.data!['pokemon_v2_pokemon'] as List? ?? [];
@@ -85,7 +87,8 @@ class _ComparatorPageState extends State<ComparatorPage> {
           }
         }
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Comparator] _loadPokemon timeout/error: $e');
       _loadedIds.remove(pokemonId);
     }
     if (mounted) setState(() => _loading = false);
@@ -679,6 +682,7 @@ class _PokemonPickerState extends State<_PokemonPicker> {
 
   Future<void> _loadPokemon() async {
     try {
+      debugPrint('[Comparator] fetching pokemon list (picker)...');
       final result = await widget.client.query(QueryOptions(
         document: gql(getPokemonsQuery),
         variables: const {
@@ -687,7 +691,8 @@ class _PokemonPickerState extends State<_PokemonPicker> {
           'where': {'is_default': {'_eq': true}},
         },
         fetchPolicy: FetchPolicy.noCache,
-      ));
+      )).timeout(const Duration(seconds: 30));
+      debugPrint('[Comparator] pokemon list (picker) OK');
       if (!mounted) return;
       if (result.data != null) {
         setState(() {
@@ -696,7 +701,8 @@ class _PokemonPickerState extends State<_PokemonPicker> {
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Comparator] _loadPokemon (picker) timeout/error: $e');
       if (mounted) setState(() => _loading = false);
     }
   }

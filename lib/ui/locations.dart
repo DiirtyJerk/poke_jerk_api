@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:graphql_flutter/graphql_flutter.dart';
+import 'package:poke_jerk_api/graphql/graphql_helper.dart';
 import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/location.dart';
@@ -32,33 +32,31 @@ class _LocationsPageState extends State<LocationsPage> {
 
   Future<void> _loadAll() async {
     _loaded = true;
-    final client = GraphQLProvider.of(context).value;
-    final result = await client.query(QueryOptions(
-      document: gql(getLocationsQuery),
-      fetchPolicy: FetchPolicy.cacheAndNetwork,
-    ));
-    if (result.hasException) {
-      setState(() { _error = result.exception.toString(); _loading = false; });
-      return;
+
+    try {
+      final locations = await safeQuery<List<GameLocation>>(
+        context: context,
+        query: getLocationsQuery,
+        tag: 'Locations',
+        parser: (data) => (data['pokemon_v2_location'] as List)
+            .map((l) => GameLocation.fromJson(l as Map<String, dynamic>))
+            .toList(),
+      );
+      if (!mounted) return;
+      setState(() { _allLocations = locations; _loading = false; _error = null; });
+    } catch (e) {
+      debugPrint('[Locations] _loadAll error: $e');
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
-    final list = result.data?['pokemon_v2_location'] as List? ?? [];
-    setState(() {
-      _allLocations =
-          list.map((l) => GameLocation.fromJson(l as Map<String, dynamic>)).toList();
-      _loading = false;
-      _error = null;
-    });
   }
 
   List<GameLocation> _filtered(String language, String search, List<int>? versionIds) {
     var result = _allLocations;
 
-    // Filter by version
     if (versionIds != null && versionIds.isNotEmpty) {
       result = result.where((loc) => loc.versionIds.any((v) => versionIds.contains(v))).toList();
     }
 
-    // Filter by search
     if (search.isNotEmpty) {
       final q = normalize(search);
       result = result.where((loc) {
@@ -68,7 +66,6 @@ class _LocationsPageState extends State<LocationsPage> {
       }).toList();
     }
 
-    // Sort alphabetically by translated name
     result = List.of(result)
       ..sort((a, b) => naturalCompare(
           normalize(a.getTranslation(language)),
@@ -85,20 +82,12 @@ class _LocationsPageState extends State<LocationsPage> {
     final hasVersionFilter = versionIds != null && versionIds.isNotEmpty;
     final locations = _filtered(language, filter.searchQuery, versionIds);
 
-    if (_loading) {
-      return const LocationsListSkeleton();
-    }
+    if (_loading) return const LocationsListSkeleton();
     if (_error != null && _allLocations.isEmpty) {
       return qr.ErrorWidget(message: _error!, onRetry: _loadAll);
     }
-
     if (locations.isEmpty) {
-      return Center(
-        child: Text(
-          language == 'fr' ? 'Aucun lieu trouvé' : 'No locations found',
-          style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
-        ),
-      );
+      return qr.EmptyWidget(message: tr(language, 'Aucun lieu trouvé', 'No locations found'));
     }
 
     // Group by region
@@ -118,7 +107,7 @@ class _LocationsPageState extends State<LocationsPage> {
         final regionName = locs.first.getRegionTranslation(language);
         final displayName = regionName.isNotEmpty
             ? regionName
-            : (language == 'fr' ? 'Autre' : 'Other');
+            : tr(language, 'Autre', 'Other');
 
         return _RegionSection(
           regionName: displayName,
@@ -206,10 +195,7 @@ class _RegionSectionState extends State<_RegionSection>
                   const Spacer(),
                   Text(
                     '${widget.locations.length}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blueGrey.shade400,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade400),
                   ),
                   const SizedBox(width: 4),
                   RotationTransition(
@@ -221,10 +207,7 @@ class _RegionSectionState extends State<_RegionSection>
             ),
           ),
           SizeTransition(
-            sizeFactor: CurvedAnimation(
-              parent: _controller,
-              curve: Curves.easeInOut,
-            ),
+            sizeFactor: CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
             axisAlignment: -1.0,
             child: Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -235,9 +218,7 @@ class _RegionSectionState extends State<_RegionSection>
                           language: widget.language,
                           onTap: () => Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => DetailLocationPage(location: loc),
-                            ),
+                            MaterialPageRoute(builder: (_) => DetailLocationPage(location: loc)),
                           ),
                         ))
                     .toList(),
@@ -255,11 +236,7 @@ class _LocationTile extends StatelessWidget {
   final String language;
   final VoidCallback onTap;
 
-  const _LocationTile({
-    required this.location,
-    required this.language,
-    required this.onTap,
-  });
+  const _LocationTile({required this.location, required this.language, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

@@ -12,6 +12,17 @@ import 'package:poke_jerk_api/model/users_datas.dart';
 import 'package:poke_jerk_api/ui/home.dart';
 import 'package:provider/provider.dart';
 
+/// Opens a Hive box, recovering automatically if it is corrupted.
+Future<Box<T>> _openBoxSafe<T>(String name) async {
+  try {
+    return await Hive.openBox<T>(name);
+  } catch (e) {
+    debugPrint('Hive box "$name" corrupted, deleting and recreating: $e');
+    await Hive.deleteBoxFromDisk(name);
+    return await Hive.openBox<T>(name);
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
@@ -19,10 +30,10 @@ void main() async {
   Hive.registerAdapter(UserPokemonsAdapter());
   Hive.registerAdapter(UserTeamAdapter());
 
-  final boxUserSettings = await Hive.openBox<UserSettings>('user_settings');
-  final boxUserPokemons = await Hive.openBox<UserPokemons>('user_pokemons');
-  final boxUserTeams = await Hive.openBox<UserTeam>('user_teams');
-  await Hive.openBox<dynamic>('pokedex_filters');
+  final boxUserSettings = await _openBoxSafe<UserSettings>('user_settings');
+  final boxUserPokemons = await _openBoxSafe<UserPokemons>('user_pokemons');
+  final boxUserTeams = await _openBoxSafe<UserTeam>('user_teams');
+  await _openBoxSafe<dynamic>('pokedex_filters');
 
   if (boxUserSettings.isEmpty) {
     boxUserSettings.add(UserSettings());
