@@ -18,14 +18,30 @@ class UserDatas with ChangeNotifier {
     }
   }
 
-  void capturedPokemon(String identifier, bool captured) {
+  /// Toggle capture for a specific version group.
+  /// If [versionGroupId] is null, toggles the global captured flag only.
+  void capturedPokemon(String identifier, bool captured, {int? versionGroupId}) {
     if (_userPokemons[identifier] == null) {
-      final userDatas = UserPokemons(identifier, false, false, captured);
+      final vgIds = (versionGroupId != null && captured) ? [versionGroupId] : <int>[];
+      final userDatas = UserPokemons(identifier, false, false, captured, vgIds);
       boxUserPokemons!.add(userDatas);
       _userPokemons[identifier] = userDatas;
     } else {
-      _userPokemons[identifier]!.captured = captured;
-      _userPokemons[identifier]!.save();
+      final up = _userPokemons[identifier]!;
+      if (versionGroupId != null) {
+        if (captured) {
+          if (!up.capturedVersionGroupIds.contains(versionGroupId)) {
+            up.capturedVersionGroupIds.add(versionGroupId);
+          }
+        } else {
+          up.capturedVersionGroupIds.remove(versionGroupId);
+        }
+        // Global captured = true if captured in at least one version
+        up.captured = up.capturedVersionGroupIds.isNotEmpty;
+      } else {
+        up.captured = captured;
+      }
+      up.save();
     }
     notifyListeners();
   }
@@ -74,9 +90,15 @@ class UserDatas with ChangeNotifier {
     notifyListeners();
   }
 
-  void clearCaptured() {
+  void clearCaptured({int? versionGroupId}) {
     _userPokemons.forEach((key, value) {
-      value.captured = false;
+      if (versionGroupId != null) {
+        value.capturedVersionGroupIds.remove(versionGroupId);
+        value.captured = value.capturedVersionGroupIds.isNotEmpty;
+      } else {
+        value.captured = false;
+        value.capturedVersionGroupIds.clear();
+      }
       value.save();
     });
     notifyListeners();

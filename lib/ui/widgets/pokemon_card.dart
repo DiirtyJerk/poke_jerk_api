@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/pokemon.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/model/users_datas.dart';
@@ -16,15 +17,17 @@ class PokemonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<UserSettings>();
+    final settings = context.read<UserSettings>();
     final userDatas = context.watch<UserDatas>();
     final language = settings.language;
     final primaryType = pokemon.types.isNotEmpty ? pokemon.types.first : null;
     final bgColor = primaryType != null
         ? ColorBuilder.getTypeColor(primaryType).withValues(alpha: 0.15)
         : Colors.grey.shade100;
+    final vgId = context.read<GlobalFilterProvider>().selectedVersionGroup?.id;
+    final userData = userDatas.getUserPokemon(pokemon.identifier);
     final isCaptured = settings.capturedFeature &&
-        (userDatas.getUserPokemon(pokemon.identifier)?.captured ?? false);
+        (userData?.isCapturedIn(vgId) ?? false);
 
     return GestureDetector(
       onTap: onTap,
@@ -53,14 +56,19 @@ class PokemonCard extends StatelessWidget {
                   ),
                   if (settings.capturedFeature)
                     GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => userDatas.capturedPokemon(
                         pokemon.identifier,
                         !isCaptured,
+                        versionGroupId: vgId,
                       ),
-                      child: Icon(
-                        isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
-                        size: 18,
-                        color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(
+                          isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
+                          size: 22,
+                          color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
+                        ),
                       ),
                     ),
                 ],

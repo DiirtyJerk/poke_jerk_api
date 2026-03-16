@@ -20,8 +20,9 @@ import 'package:provider/provider.dart';
 class DetailPokemon extends StatelessWidget {
   final int pokemonId;
   final VersionFilter? versionFilter;
+  final String? formName;
 
-  const DetailPokemon({super.key, required this.pokemonId, this.versionFilter});
+  const DetailPokemon({super.key, required this.pokemonId, this.versionFilter, this.formName});
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +52,7 @@ class DetailPokemon extends StatelessWidget {
         final pokemon = Pokemon.fromDetailJson(data);
         final effectiveFilter = versionFilter ??
             context.read<GlobalFilterProvider>().versionFilter;
-        return _DetailView(pokemon: pokemon, versionFilter: effectiveFilter);
+        return _DetailView(pokemon: pokemon, versionFilter: effectiveFilter, formName: formName);
       },
     );
   }
@@ -60,8 +61,9 @@ class DetailPokemon extends StatelessWidget {
 class _DetailView extends StatefulWidget {
   final Pokemon pokemon;
   final VersionFilter? versionFilter;
+  final String? formName;
 
-  const _DetailView({required this.pokemon, this.versionFilter});
+  const _DetailView({required this.pokemon, this.versionFilter, this.formName});
 
   @override
   State<_DetailView> createState() => _DetailViewState();
@@ -79,6 +81,21 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  String _displayName(Pokemon pokemon, String language) {
+    // If opened from a regional form, find the matching variant name
+    final formName = widget.formName;
+    if (formName != null && formName.isNotEmpty) {
+      final variant = pokemon.variants
+          .cast<PokemonVariant?>()
+          .firstWhere((v) => v?.formName == formName, orElse: () => null);
+      if (variant != null) {
+        final name = variant.getTranslation(language);
+        if (name.isNotEmpty) return name;
+      }
+    }
+    return pokemon.getTranslation(language);
   }
 
   @override
@@ -114,24 +131,29 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
                 ),
               ),
               if (UserSettings().capturedFeature)
-                IconButton(
-                  icon: Icon(
-                    (userData?.captured ?? false)
-                        ? Icons.catching_pokemon
-                        : Icons.catching_pokemon_outlined,
-                    color: (userData?.captured ?? false)
-                        ? const Color(0xFFE53935)
-                        : Colors.white70,
-                    size: 28,
-                  ),
-                  onPressed: () => userDatas.capturedPokemon(
-                    pokemon.identifier,
-                    !(userData?.captured ?? false),
-                  ),
-                ),
+                Builder(builder: (context) {
+                  final vgId = context.watch<GlobalFilterProvider>().selectedVersionGroup?.id;
+                  final isCaptured = userData?.isCapturedIn(vgId) ?? false;
+                  return IconButton(
+                    icon: Icon(
+                      isCaptured
+                          ? Icons.catching_pokemon
+                          : Icons.catching_pokemon_outlined,
+                      color: isCaptured
+                          ? const Color(0xFFE53935)
+                          : Colors.white70,
+                      size: 28,
+                    ),
+                    onPressed: () => userDatas.capturedPokemon(
+                      pokemon.identifier,
+                      !isCaptured,
+                      versionGroupId: vgId,
+                    ),
+                  );
+                }),
             ],
             title: Text(
-              pokemon.getTranslation(language),
+              _displayName(pokemon, language),
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -180,6 +202,8 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
               currentPokemonId: pokemon.id,
               externalMaxGeneration: widget.versionFilter?.generationId,
               externalPokedexId: widget.versionFilter?.pokedexId,
+              externalVersionGroupId: widget.versionFilter?.versionGroupId,
+              externalFormName: widget.formName,
             ),
             VariantsTab(pokemon: pokemon, language: language, accentColor: bgColor),
             MovesTab(

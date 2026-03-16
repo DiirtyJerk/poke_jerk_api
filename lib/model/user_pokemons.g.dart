@@ -21,13 +21,14 @@ class UserPokemonsAdapter extends TypeAdapter<UserPokemons> {
       fields[1] as bool,
       fields[2] as bool,
       fields[3] as bool,
+      fields[4] == null ? [] : (fields[4] as List?)?.cast<int>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, UserPokemons obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.identifier)
       ..writeByte(1)
@@ -35,7 +36,9 @@ class UserPokemonsAdapter extends TypeAdapter<UserPokemons> {
       ..writeByte(2)
       ..write(obj.favorited)
       ..writeByte(3)
-      ..write(obj.captured);
+      ..write(obj.captured)
+      ..writeByte(4)
+      ..write(obj.capturedVersionGroupIds);
   }
 
   @override

@@ -204,6 +204,8 @@ class Pokemon {
   final int? generationId;
   final int? pokedexNumber;
   final List<PokemonVariant> variants;
+  final String? formName;
+  final Map<int, String>? formNames;
 
   Pokemon({
     required this.id,
@@ -222,20 +224,32 @@ class Pokemon {
     this.generationId,
     this.pokedexNumber,
     this.variants = const [],
+    this.formName,
+    this.formNames,
   });
 
   String get officialArtworkUrl =>
       'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/$id.png';
 
+  /// National dex number: use species ID if available, otherwise pokemon ID.
+  int get nationalId => species?.id ?? id;
+
   String get displayId {
-    String s = '#$id';
-    while (s.length < 5) { s = s.replaceFirst('#', '#0'); }
-    return s;
+    final n = nationalId;
+    return '#${n.toString().padLeft(4, '0')}';
   }
 
   int get totalStats => stats.values.fold(0, (a, b) => a + b);
 
   String getTranslation(String language) {
+    // Use regional form name if available
+    if (formNames != null && formNames!.isNotEmpty) {
+      final id = langId(language);
+      final formTranslation = formNames![id] ?? formNames![9];
+      if (formTranslation != null && formTranslation.isNotEmpty) {
+        return formTranslation;
+      }
+    }
     return species?.getTranslation(language) ?? identifier;
   }
 
@@ -276,6 +290,24 @@ class Pokemon {
       species = PokemonSpecies.fromJson(specyJson);
     }
 
+    // Parse form name for regional forms
+    final formsList = json['pokemon_v2_pokemonforms'] as List?;
+    String? formName;
+    Map<int, String>? parsedFormNames;
+    if (formsList != null && formsList.isNotEmpty) {
+      final firstForm = formsList.first as Map<String, dynamic>;
+      formName = firstForm['form_name'] as String?;
+      if (formName != null && formName.isNotEmpty) {
+        parsedFormNames = <int, String>{};
+        for (final n in (firstForm['pokemon_v2_pokemonformnames'] as List? ?? [])) {
+          final pokemonName = n['pokemon_name'] as String?;
+          if (pokemonName != null && pokemonName.isNotEmpty) {
+            parsedFormNames[n['language_id'] as int] = pokemonName;
+          }
+        }
+      }
+    }
+
     return Pokemon(
       id: json['id'] as int,
       identifier: json['name'] as String,
@@ -292,6 +324,8 @@ class Pokemon {
       spriteUrl: spriteUrl,
       generationId: specyJson?['generation_id'] as int?,
       pokedexNumber: json['pokedex_number'] as int?,
+      formName: formName,
+      formNames: parsedFormNames,
     );
   }
 

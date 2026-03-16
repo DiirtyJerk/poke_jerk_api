@@ -64,62 +64,76 @@ void showRankingSheet(
                 ),
               ),
               // Stat chips (multi-select, tap to toggle)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    _RankingChip(
+              Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: _RankingChip(
                       label: 'Total',
                       selected: selectedStats.isEmpty,
                       onTap: () => setSheetState(() => selectedStats.clear()),
                     ),
-                    ...statKeys.map((key) => _RankingChip(
-                      label: _statLabel(key, language),
-                      selected: selectedStats.contains(key),
-                      onTap: () => setSheetState(() {
-                        if (selectedStats.contains(key)) {
-                          selectedStats.remove(key);
-                        } else {
-                          selectedStats.add(key);
-                        }
-                      }),
-                    )),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Row(
+                        children: statKeys.map((key) => _RankingChip(
+                          label: _statLabel(key, language),
+                          selected: selectedStats.contains(key),
+                          onTap: () => setSheetState(() {
+                            if (selectedStats.contains(key)) {
+                              selectedStats.remove(key);
+                            } else {
+                              selectedStats.add(key);
+                            }
+                          }),
+                        )).toList(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               // Type filter chips (up to 2)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    _TypeFilterChip(
+              Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: _TypeFilterChip(
                       label: tr(language, 'Tous', 'All'),
                       color: Colors.grey,
                       selected: selectedTypeIds.isEmpty,
                       onTap: () => setSheetState(() => selectedTypeIds.clear()),
                     ),
-                    ...filter.types.map((type) {
-                      final isSelected = selectedTypeIds.contains(type.id);
-                      final isFull = selectedTypeIds.length >= 2 && !isSelected;
-                      return _TypeFilterChip(
-                        label: type.getTranslation(language),
-                        color: ColorBuilder.getTypeColor(type),
-                        selected: isSelected,
-                        disabled: isFull,
-                        onTap: isFull ? null : () => setSheetState(() {
-                          if (isSelected) {
-                            selectedTypeIds.remove(type.id);
-                          } else {
-                            selectedTypeIds.add(type.id);
-                          }
-                        }),
-                      );
-                    }),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Row(
+                        children: filter.types.map((type) {
+                          final isSelected = selectedTypeIds.contains(type.id);
+                          final isFull = selectedTypeIds.length >= 2 && !isSelected;
+                          return _TypeFilterChip(
+                            label: type.getTranslation(language),
+                            color: ColorBuilder.getTypeColor(type),
+                            selected: isSelected,
+                            disabled: isFull,
+                            onTap: isFull ? null : () => setSheetState(() {
+                              if (isSelected) {
+                                selectedTypeIds.remove(type.id);
+                              } else {
+                                selectedTypeIds.add(type.id);
+                              }
+                            }),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               // Show stat label
               if (selectedStats.isNotEmpty)

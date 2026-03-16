@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:poke_jerk_api/model/evolution.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/move.dart';
+import 'package:poke_jerk_api/model/pokedex_filter_data.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/widgets/colored_badge.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
@@ -32,6 +33,53 @@ class _EvoNode {
 }
 
 const _regionalFormNames = {'alola', 'galar', 'hisui', 'paldea'};
+
+/// Filter evolution entries to keep only the forms matching the selected
+/// version group's regional form. If [expectedForm] is set (e.g. "alola"),
+/// keep only regional entries matching it and remove the default form branch.
+/// If [expectedForm] is null, keep only default form branches and remove
+/// regional variants.
+List<EvolutionDetail> _filterByRegionalForm(List<EvolutionDetail> evolutions, String? expectedForm) {
+  final byTarget = <int, List<EvolutionDetail>>{};
+  for (final e in evolutions) {
+    if (e.toSpecies != null) {
+      byTarget.putIfAbsent(e.evolvedSpeciesId, () => []).add(e);
+    }
+  }
+
+  final idsToRemove = <int>{};
+  for (final entries in byTarget.values) {
+    if (entries.length <= 1) continue;
+
+    final assignments = _assignFormsToEntries(entries);
+    if (assignments.isEmpty) continue;
+
+    // Check if the target species actually has the expected regional form
+    final targetSpecies = entries.first.toSpecies;
+    final hasExpectedForm = expectedForm != null &&
+        targetSpecies != null &&
+        targetSpecies.forms.any((f) => f.formName == expectedForm);
+
+    for (final entry in entries) {
+      final assignedForm = assignments[entry.id]; // null = default form
+      if (expectedForm != null && hasExpectedForm) {
+        // We want a regional form AND it exists: keep only that form
+        if (assignedForm != expectedForm) {
+          idsToRemove.add(entry.id);
+        }
+      } else {
+        // Default form wanted, OR expected regional form doesn't exist for this species:
+        // keep default, remove other regional forms
+        if (assignedForm != null) {
+          idsToRemove.add(entry.id);
+        }
+      }
+    }
+  }
+
+  if (idsToRemove.isEmpty) return evolutions;
+  return evolutions.where((e) => !idsToRemove.contains(e.id)).toList();
+}
 
 /// Finds the form name of a pokemon by its ID in the evolution data.
 String _findFormName(List<EvolutionDetail> evolutions, int pokemonId) {
@@ -91,8 +139,8 @@ _EvoNode? _buildTree(List<EvolutionDetail> evolutions, {String formName = ''}) {
     if (rootSpecies == null) return null;
   }
 
-  // Pre-compute form assignments for duplicate evolution paths
-  final formAssignments = <int, String>{};
+  // Pre-compute form assignments for duplicate evolution paths (same target)
+  final sameTargetAssignments = <int, String>{};
   final byTargetSpecies = <int, List<EvolutionDetail>>{};
   for (final e in evolutions) {
     if (e.toSpecies != null) {
@@ -100,14 +148,53 @@ _EvoNode? _buildTree(List<EvolutionDetail> evolutions, {String formName = ''}) {
     }
   }
   for (final entries in byTargetSpecies.values) {
-    formAssignments.addAll(_assignFormsToEntries(entries));
+    sameTargetAssignments.addAll(_assignFormsToEntries(entries));
   }
 
-  // Index by default fromSpecies pokemonId
+  // Build full entry → form map including unique-target entries
+  // Group entries by source species to match unassigned entries to remaining forms
+  final fullFormMap = <int, String>{};
   final byFrom = <int, List<EvolutionDetail>>{};
   for (final e in evolutions) {
     final fromId = e.fromSpecies?.pokemonId ?? 0;
     byFrom.putIfAbsent(fromId, () => []).add(e);
+  }
+
+  for (final children in byFrom.values) {
+    if (children.length <= 1) continue;
+
+    final assignedForms = <String>{};
+
+    // 1. Copy same-target assignments and mark default entries
+    for (final child in children) {
+      if (sameTargetAssignments.containsKey(child.id)) {
+        fullFormMap[child.id] = sameTargetAssignments[child.id]!;
+        assignedForms.add(sameTargetAssignments[child.id]!);
+      } else {
+        // Check if this is the default entry for a same-target group
+        final sameTarget = children.where((c) => c.evolvedSpeciesId == child.evolvedSpeciesId).toList();
+        if (sameTarget.length > 1 && sameTarget.any((c) => sameTargetAssignments.containsKey(c.id))) {
+          fullFormMap[child.id] = ''; // default form
+          assignedForms.add('');
+        }
+      }
+    }
+
+    // 2. Get source species' regional form names
+    final sourceSpecies = children.first.fromSpecies;
+    if (sourceSpecies == null) continue;
+    final allSourceForms = sourceSpecies.forms
+        .where((f) => _regionalFormNames.contains(f.formName))
+        .map((f) => f.formName)
+        .toList();
+
+    // 3. Match unassigned entries to remaining regional forms
+    final unassigned = children.where((c) => !fullFormMap.containsKey(c.id)).toList();
+    final remainingForms = allSourceForms.where((f) => !assignedForms.contains(f)).toList();
+
+    for (int i = 0; i < unassigned.length && i < remainingForms.length; i++) {
+      fullFormMap[unassigned[i].id] = remainingForms[i];
+    }
   }
 
   _EvoNode buildNode(SpeciesRef species, EvolutionDetail? trigger) {
@@ -116,13 +203,23 @@ _EvoNode? _buildTree(List<EvolutionDetail> evolutions, {String formName = ''}) {
     final children = byFrom[defaultId] ?? [];
     final seen = <String>{};
     for (final child in children) {
-      if (child.toSpecies != null && seen.add(child.dedupeKey)) {
-        // Use explicit formName if provided, otherwise use auto-detected form
-        final assignedForm = formName.isNotEmpty
-            ? formName
-            : (formAssignments[child.id] ?? '');
-        node.children.add(buildNode(child.toSpecies!.withForm(assignedForm), child));
+      if (child.toSpecies == null || !seen.add(child.dedupeKey)) continue;
+
+      // When a specific form is requested, only keep matching entries
+      if (formName.isNotEmpty) {
+        final entryForm = fullFormMap[child.id];
+        if (entryForm != null && entryForm != formName) continue;
       }
+      // When default form is requested, skip entries assigned to a regional form
+      if (formName.isEmpty) {
+        final entryForm = fullFormMap[child.id];
+        if (entryForm != null && entryForm.isNotEmpty) continue;
+      }
+
+      final assignedForm = formName.isNotEmpty
+          ? formName
+          : (sameTargetAssignments[child.id] ?? '');
+      node.children.add(buildNode(child.toSpecies!.withForm(assignedForm), child));
     }
     return node;
   }
@@ -144,6 +241,8 @@ class EvolutionChainWidget extends StatelessWidget {
   final int currentPokemonId;
   final int? externalMaxGeneration;
   final int? externalPokedexId;
+  final int? externalVersionGroupId;
+  final String? externalFormName;
 
   const EvolutionChainWidget({
     super.key,
@@ -153,6 +252,8 @@ class EvolutionChainWidget extends StatelessWidget {
     required this.currentPokemonId,
     this.externalMaxGeneration,
     this.externalPokedexId,
+    this.externalVersionGroupId,
+    this.externalFormName,
   });
 
   @override
@@ -195,8 +296,36 @@ class EvolutionChainWidget extends StatelessWidget {
             })
             .toList();
 
+    // Filter regional forms based on the active version group's regional form
+    String? expectedRegionalForm;
+    if (!hasExternalFilter && selectedVersionGroupId != null) {
+      final activeVg = globalFilter.versionGroupById(selectedVersionGroupId);
+      expectedRegionalForm = activeVg?.regionalForm;
+      // Also check transient VG via the static map
+      expectedRegionalForm ??= VersionGroup.regionalFormMap[selectedVersionGroupId];
+    }
+    // Also filter when using external filter (detail page with versionFilter)
+    if (hasExternalFilter && externalVersionGroupId != null) {
+      expectedRegionalForm = globalFilter.versionGroupById(externalVersionGroupId!)?.regionalForm
+          ?? VersionGroup.regionalFormMap[externalVersionGroupId!];
+    }
+    // Or use formName passed from pokédex (regional form without version selected)
+    if (expectedRegionalForm == null && externalFormName != null && externalFormName!.isNotEmpty) {
+      expectedRegionalForm = externalFormName;
+    }
+    final shouldFilterForms = selectedVersionGroupId != null
+        || externalVersionGroupId != null
+        || (externalFormName != null && externalFormName!.isNotEmpty);
+    final regionFilteredEvolutions = shouldFilterForms
+        ? _filterByRegionalForm(filteredEvolutions, expectedRegionalForm)
+        : filteredEvolutions;
+
     final currentFormName = _findFormName(evolutions, currentPokemonId);
-    final tree = _buildTree(filteredEvolutions, formName: currentFormName);
+    // When a regional form is active, pass unfiltered evolutions to _buildTree
+    // so buildNode can properly filter using all formAssignments.
+    // _filterByRegionalForm is only used for default forms (removing regional branches).
+    final treeEvolutions = currentFormName.isNotEmpty ? filteredEvolutions : regionFilteredEvolutions;
+    final tree = _buildTree(treeEvolutions, formName: currentFormName);
 
     return Column(
       children: [

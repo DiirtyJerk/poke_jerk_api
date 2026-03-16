@@ -34,7 +34,15 @@ query GetPokemons($limit: Int!, $offset: Int!, $where: pokemon_v2_pokemon_bool_e
     pokemon_v2_pokemonsprites {
       sprites
     }
+    pokemon_v2_pokemonforms(limit: 1) {
+      form_name
+      pokemon_v2_pokemonformnames(where: {language_id: {_in: [5, 9]}}) {
+        pokemon_name
+        language_id
+      }
+    }
     pokemon_v2_pokemonspecy {
+      id
       generation_id
       pokemon_v2_pokemonspeciesnames(where: {language_id: {_in: [5, 9]}}) {
         name

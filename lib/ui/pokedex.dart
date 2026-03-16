@@ -110,10 +110,23 @@ class _PokedexState extends State<Pokedex> {
         return;
       }
 
+      // Include default forms + regional forms (alola, galar, hisui, paldea)
+      const regionalFormNames = ['alola', 'galar', 'hisui', 'paldea'];
+      const where = {
+        '_or': [
+          {'is_default': {'_eq': true}},
+          {
+            'pokemon_v2_pokemonforms': {
+              'form_name': {'_in': regionalFormNames},
+            },
+          },
+        ],
+      };
+
       debugPrint('[Pokedex] fetching all pokemon...');
       final result = await client.query(QueryOptions(
         document: gql(getPokemonsQuery),
-        variables: {'limit': 2000, 'offset': 0, 'where': const {'is_default': {'_eq': true}}},
+        variables: {'limit': 2500, 'offset': 0, 'where': where},
         fetchPolicy: FetchPolicy.noCache,
       )).timeout(queryTimeout);
       debugPrint('[Pokedex] all pokemon query OK');
@@ -125,8 +138,15 @@ class _PokedexState extends State<Pokedex> {
       }
 
       final data = result.data?['pokemon_v2_pokemon'] as List? ?? [];
+      final parsed = data.map((p) => Pokemon.fromListJson(p as Map<String, dynamic>)).toList();
+      // Sort: by national dex ID, then base form first (lower pokemon id = base)
+      parsed.sort((a, b) {
+        final cmp = a.nationalId.compareTo(b.nationalId);
+        if (cmp != 0) return cmp;
+        return a.id.compareTo(b.id);
+      });
       setState(() {
-        _allPokemons = data.map((p) => Pokemon.fromListJson(p as Map<String, dynamic>)).toList();
+        _allPokemons = parsed;
         _isLoading = false;
         _error = null;
         _loadedPokedexId = null;
@@ -232,13 +252,14 @@ class _PokedexState extends State<Pokedex> {
 
     // Capture filter
     final showCapture = settings.capturedFeature;
+    final vgId = filter.selectedVersionGroup?.id;
     final capturedCount = showCapture
-        ? pokemons.where((p) => userDatas.getUserPokemon(p.identifier)?.captured ?? false).length
+        ? pokemons.where((p) => userDatas.getUserPokemon(p.identifier)?.isCapturedIn(vgId) ?? false).length
         : 0;
 
     final displayedPokemons = showCapture && _captureFilter != 0
         ? pokemons.where((p) {
-            final isCaptured = userDatas.getUserPokemon(p.identifier)?.captured ?? false;
+            final isCaptured = userDatas.getUserPokemon(p.identifier)?.isCapturedIn(vgId) ?? false;
             return _captureFilter == 1 ? isCaptured : !isCaptured;
           }).toList()
         : pokemons;
@@ -278,6 +299,7 @@ class _PokedexState extends State<Pokedex> {
                         builder: (_) => DetailPokemon(
                           pokemonId: pokemon.id,
                           versionFilter: filter.versionFilter,
+                          formName: pokemon.formName,
                         ),
                       ),
                     ),
