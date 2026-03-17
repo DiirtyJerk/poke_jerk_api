@@ -8,6 +8,8 @@ class GameLocation {
   final int? regionId;
   final Map<int, String> regionNames;
   final Set<int> versionIds;
+  /// pokemonIdentifier → set of version IDs where it appears
+  final Map<String, Set<int>> pokemonByVersion;
 
   GameLocation({
     required this.id,
@@ -16,7 +18,19 @@ class GameLocation {
     this.regionId,
     this.regionNames = const {},
     this.versionIds = const {},
+    this.pokemonByVersion = const {},
   });
+
+  /// Unique pokemon identifiers, optionally filtered by version IDs.
+  Set<String> getPokemonIdentifiers([List<int>? filterVersionIds]) {
+    if (filterVersionIds == null || filterVersionIds.isEmpty) {
+      return pokemonByVersion.keys.toSet();
+    }
+    return pokemonByVersion.entries
+        .where((e) => e.value.any((v) => filterVersionIds.contains(v)))
+        .map((e) => e.key)
+        .toSet();
+  }
 
   String getTranslation(String language) => localizedName(names, language, identifier);
   String getRegionTranslation(String language) => localizedName(regionNames, language, '');
@@ -36,10 +50,18 @@ class GameLocation {
       }
     }
     final versionIds = <int>{};
+    final pokemonByVersion = <String, Set<int>>{};
     for (final area in (json['pokemon_v2_locationareas'] as List? ?? [])) {
       for (final enc in (area['pokemon_v2_encounters'] as List? ?? [])) {
         final vid = enc['version_id'] as int?;
         if (vid != null) versionIds.add(vid);
+        final pokemonJson = enc['pokemon_v2_pokemon'] as Map<String, dynamic>?;
+        if (pokemonJson != null) {
+          final name = pokemonJson['name'] as String?;
+          if (name != null && name.isNotEmpty && vid != null) {
+            pokemonByVersion.putIfAbsent(name, () => {}).add(vid);
+          }
+        }
       }
     }
 
@@ -50,6 +72,7 @@ class GameLocation {
       regionId: regionId,
       regionNames: regionNames,
       versionIds: versionIds,
+      pokemonByVersion: pokemonByVersion,
     );
   }
 }
@@ -68,6 +91,8 @@ class LocationPokemonEncounter {
   final int minLevel;
   final int maxLevel;
   final int chance;
+  final String areaIdentifier;
+  final Map<int, String> areaNames;
 
   LocationPokemonEncounter({
     required this.pokemonId,
@@ -83,7 +108,14 @@ class LocationPokemonEncounter {
     required this.minLevel,
     required this.maxLevel,
     required this.chance,
+    this.areaIdentifier = '',
+    this.areaNames = const {},
   });
+
+  String getAreaName(String language) {
+    final name = localizedName(areaNames, language, '');
+    return name.isNotEmpty ? name : '';
+  }
 
   String getPokemonName(String language) => localizedName(pokemonNames, language, pokemonIdentifier);
   String getVersionName(String language) => localizedName(versionNames, language, versionIdentifier);
@@ -130,6 +162,15 @@ class LocationPokemonEncounter {
       methodNames[n['language_id'] as int] = n['name'] as String;
     }
 
+    final areaJson = json['pokemon_v2_locationarea'] as Map<String, dynamic>?;
+    final areaIdentifier = areaJson?['name'] as String? ?? '';
+    final areaNames = <int, String>{};
+    if (areaJson != null) {
+      for (final n in (areaJson['pokemon_v2_locationareanames'] as List? ?? [])) {
+        areaNames[n['language_id'] as int] = n['name'] as String;
+      }
+    }
+
     return LocationPokemonEncounter(
       pokemonId: pokemonId,
       pokemonIdentifier: pokemonIdentifier,
@@ -144,6 +185,8 @@ class LocationPokemonEncounter {
       maxLevel: json['max_level'] as int? ?? 0,
       slotId: slotId,
       chance: chance,
+      areaIdentifier: areaIdentifier,
+      areaNames: areaNames,
     );
   }
 }

@@ -745,6 +745,9 @@ query GetLocations {
     pokemon_v2_locationareas {
       pokemon_v2_encounters {
         version_id
+        pokemon_v2_pokemon {
+          name
+        }
       }
     }
   }
@@ -797,6 +800,13 @@ query GetLocationDetail($locationId: Int!) {
           name
           language_id
         }
+      }
+    }
+    pokemon_v2_locationarea {
+      name
+      pokemon_v2_locationareanames(where: {language_id: {_in: [5, 9]}}) {
+        name
+        language_id
       }
     }
   }

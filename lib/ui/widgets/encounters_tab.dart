@@ -100,6 +100,7 @@ class _LocationCard extends StatelessWidget {
         minLevel: e.minLevel,
         maxLevel: e.maxLevel,
         chance: e.chance,
+        area: '',
       )),
     );
 

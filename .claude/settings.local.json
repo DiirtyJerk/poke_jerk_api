@@ -8,7 +8,8 @@
       "Bash(python3 -m json.tool)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(grep \"\\\\.dart$\")",
-      "Bash(curl -s -X POST https://beta.pokeapi.co/graphql/v1beta -H \"Content-Type: application/json\" -d '{\"\"query\"\":\"\"{ pokemon_v2_versiongroup\\(where: {id: {_eq: 30}}\\) { id name } }\"\"}')"
+      "Bash(curl -s -X POST https://beta.pokeapi.co/graphql/v1beta -H \"Content-Type: application/json\" -d '{\"\"query\"\":\"\"{ pokemon_v2_versiongroup\\(where: {id: {_eq: 30}}\\) { id name } }\"\"}')",
+      "Bash(flutter analyze:*)"
     ]
   }
 }

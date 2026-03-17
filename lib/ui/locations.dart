@@ -4,6 +4,7 @@ import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/location.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
+import 'package:poke_jerk_api/model/users_datas.dart';
 import 'package:poke_jerk_api/ui/detail_location.dart';
 import 'package:poke_jerk_api/ui/widgets/list_loading_skeleton.dart';
 import 'package:poke_jerk_api/ui/widgets/encounter_shared.dart';
@@ -114,6 +115,7 @@ class _LocationsPageState extends State<LocationsPage> {
           locations: locs,
           language: language,
           initiallyExpanded: hasVersionFilter,
+          versionIds: versionIds,
         );
       },
     );
@@ -125,12 +127,14 @@ class _RegionSection extends StatefulWidget {
   final List<GameLocation> locations;
   final String language;
   final bool initiallyExpanded;
+  final List<int>? versionIds;
 
   const _RegionSection({
     required this.regionName,
     required this.locations,
     required this.language,
     required this.initiallyExpanded,
+    this.versionIds,
   });
 
   @override
@@ -216,6 +220,7 @@ class _RegionSectionState extends State<_RegionSection>
                     .map((loc) => _LocationTile(
                           location: loc,
                           language: widget.language,
+                          versionIds: widget.versionIds,
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => DetailLocationPage(location: loc)),
@@ -234,13 +239,42 @@ class _RegionSectionState extends State<_RegionSection>
 class _LocationTile extends StatelessWidget {
   final GameLocation location;
   final String language;
+  final List<int>? versionIds;
   final VoidCallback onTap;
 
-  const _LocationTile({required this.location, required this.language, required this.onTap});
+  const _LocationTile({required this.location, required this.language, this.versionIds, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final icon = locationIcon(location.identifier);
+    final settings = context.watch<UserSettings>();
+    final showCapture = settings.capturedFeature;
+
+    Widget? captureWidget;
+    final pokemonIds = location.getPokemonIdentifiers(versionIds);
+    if (showCapture && pokemonIds.isNotEmpty) {
+      final userDatas = context.watch<UserDatas>();
+      final uncaptured = pokemonIds
+          .where((id) => !(userDatas.getUserPokemon(id)?.captured ?? false))
+          .length;
+      if (uncaptured > 0) {
+        captureWidget = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE53935).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            '$uncaptured',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFE53935),
+            ),
+          ),
+        );
+      }
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
@@ -260,7 +294,16 @@ class _LocationTile extends StatelessWidget {
           location.getTranslation(language),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         ),
-        trailing: Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (captureWidget != null) ...[
+              captureWidget,
+              const SizedBox(width: 4),
+            ],
+            Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+          ],
+        ),
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10),
         onTap: onTap,

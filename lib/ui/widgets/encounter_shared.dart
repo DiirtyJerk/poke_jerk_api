@@ -7,8 +7,9 @@ class EncounterSlot {
   final int minLevel;
   final int maxLevel;
   final int chance;
+  final String area;
 
-  EncounterSlot({required this.minLevel, required this.maxLevel, required this.chance});
+  EncounterSlot({required this.minLevel, required this.maxLevel, required this.chance, this.area = ''});
 }
 
 class MergedMethod {
@@ -62,24 +63,17 @@ IconData locationIcon(String name) {
 /// [getKey] extracts the stable grouping key (e.g. English method name or identifier).
 /// [getLabel] extracts the display label (localized method name).
 List<MergedMethod> mergeByMethod({
-  required Iterable<({String key, String label, int slotId, int minLevel, int maxLevel, int chance})> entries,
+  required Iterable<({String key, String label, int slotId, int minLevel, int maxLevel, int chance, String area})> entries,
   bool sort = true,
 }) {
-  // Deduplicate by encounter slot id (same slot with different conditions = same encounter)
-  final seen = <int>{};
-  final unique = <({String key, String label, int slotId, int minLevel, int maxLevel, int chance})>[];
-  for (final e in entries) {
-    if (seen.add(e.slotId)) unique.add(e);
-  }
-
   final byMethod = <String, MergedMethod>{};
-  for (final e in unique) {
+  for (final e in entries) {
     if (byMethod.containsKey(e.key)) {
       final m = byMethod[e.key]!;
       m.totalChance += e.chance;
       if (e.minLevel < m.minLevel) m.minLevel = e.minLevel;
       if (e.maxLevel > m.maxLevel) m.maxLevel = e.maxLevel;
-      m.slots.add(EncounterSlot(minLevel: e.minLevel, maxLevel: e.maxLevel, chance: e.chance));
+      m.slots.add(EncounterSlot(minLevel: e.minLevel, maxLevel: e.maxLevel, chance: e.chance, area: e.area));
     } else {
       byMethod[e.key] = MergedMethod(
         methodName: e.label,
@@ -87,12 +81,30 @@ List<MergedMethod> mergeByMethod({
         minLevel: e.minLevel,
         maxLevel: e.maxLevel,
         totalChance: e.chance,
-        slots: [EncounterSlot(minLevel: e.minLevel, maxLevel: e.maxLevel, chance: e.chance)],
+        slots: [EncounterSlot(minLevel: e.minLevel, maxLevel: e.maxLevel, chance: e.chance, area: e.area)],
       );
     }
   }
   final methods = byMethod.values.toList();
   for (final m in methods) {
+    // Average across areas if multiple
+    final areas = m.slots.map((s) => s.area).toSet();
+    if (areas.length > 1 && areas.any((a) => a.isNotEmpty)) {
+      final perArea = <String, int>{};
+      for (final area in areas) {
+        final areaSlots = m.slots.where((s) => s.area == area);
+        // Merge same level range within area
+        final merged = <String, int>{};
+        for (final s in areaSlots) {
+          final key = '${s.minLevel}-${s.maxLevel}';
+          merged[key] = (merged[key] ?? 0) + s.chance;
+        }
+        var t = merged.values.fold(0, (sum, c) => sum + c);
+        if (t > 100) t = 100;
+        perArea[area] = t;
+      }
+      m.totalChance = perArea.values.fold(0, (sum, c) => sum + c) ~/ perArea.length;
+    }
     if (m.totalChance > 100) m.totalChance = 100;
   }
   if (sort) methods.sort((a, b) => b.totalChance.compareTo(a.totalChance));
@@ -220,10 +232,15 @@ class _MethodRowState extends State<MethodRow> {
     final levelText = method.minLevel == method.maxLevel
         ? 'Niv. ${method.minLevel}'
         : 'Niv. ${method.minLevel}–${method.maxLevel}';
-    final hasDetail = method.slots.length > 1;
+    // Count unique level+area combinations after merge
+    final uniqueEntries = method.slots.map((s) {
+      final lvl = s.minLevel == s.maxLevel ? '${s.minLevel}' : '${s.minLevel}-${s.maxLevel}';
+      return '${s.area}|$lvl';
+    }).toSet();
+    final hasDetail = uniqueEntries.length > 1;
 
     return GestureDetector(
-      onLongPress: hasDetail ? () => setState(() => _expanded = !_expanded) : null,
+      onTap: hasDetail ? () => setState(() => _expanded = !_expanded) : null,
       behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
@@ -289,32 +306,52 @@ class _MethodRowState extends State<MethodRow> {
   }
 
   Widget _buildSlotDetail(MergedMethod method) {
+    final hasMultipleAreas = method.slots.map((s) => s.area).where((a) => a.isNotEmpty).toSet().length > 1;
+
+    // Merge slots with same level range + area
+    final merged = <String, ({int chance, String area})>{};
     final sorted = List<EncounterSlot>.from(method.slots)
-      ..sort((a, b) => a.minLevel.compareTo(b.minLevel));
+      ..sort((a, b) {
+        final cmp = a.area.compareTo(b.area);
+        if (cmp != 0) return cmp;
+        return a.minLevel.compareTo(b.minLevel);
+      });
+    for (final slot in sorted) {
+      final levelPart = slot.minLevel == slot.maxLevel
+          ? 'Niv. ${slot.minLevel}'
+          : 'Niv. ${slot.minLevel}–${slot.maxLevel}';
+      final key = hasMultipleAreas ? '$levelPart|${slot.area}' : levelPart;
+      final existing = merged[key];
+      merged[key] = (chance: (existing?.chance ?? 0) + slot.chance, area: slot.area);
+    }
 
     return Padding(
       padding: const EdgeInsets.only(left: 20, top: 2, bottom: 4),
       child: Column(
-        children: sorted.map((slot) {
-          final lvl = slot.minLevel == slot.maxLevel
-              ? 'Niv. ${slot.minLevel}'
-              : 'Niv. ${slot.minLevel}–${slot.maxLevel}';
+        children: merged.entries.map((e) {
+          final chance = e.value.chance > 100 ? 100 : e.value.chance;
+          final levelText = e.key.split('|').first;
+          final area = hasMultipleAreas ? e.value.area : '';
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 1),
             child: Row(
               children: [
-                Text(lvl, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                if (area.isNotEmpty) ...[
+                  Text(area, style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
+                  const SizedBox(width: 6),
+                ],
+                Text(levelText, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                 const Spacer(),
                 Container(
                   width: 38,
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
                   decoration: BoxDecoration(
-                    color: chanceColor(slot.chance).withValues(alpha: 0.8),
+                    color: chanceColor(chance).withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '${slot.chance}%',
+                    '$chance%',
                     style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                 ),

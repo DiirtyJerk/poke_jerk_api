@@ -5,6 +5,7 @@ import 'package:poke_jerk_api/graphql/queries.dart';
 import 'package:poke_jerk_api/model/global_filter.dart';
 import 'package:poke_jerk_api/model/location.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
+import 'package:poke_jerk_api/model/users_datas.dart';
 import 'package:poke_jerk_api/ui/detail_pokemon.dart';
 import 'package:poke_jerk_api/ui/widgets/encounter_shared.dart';
 import 'package:poke_jerk_api/ui/widgets/type_chip.dart';
@@ -21,12 +22,25 @@ class DetailLocationPage extends StatefulWidget {
 class _DetailLocationPageState extends State<DetailLocationPage> {
   List<LocationPokemonEncounter> _encounters = [];
   bool _loading = true;
-  bool _pokemonFirst = false;
+  bool _pokemonFirst = true;
+  late bool _uncapturedOnly;
+
+  @override
+  void initState() {
+    super.initState();
+    _uncapturedOnly = false; // will be set in didChangeDependencies
+  }
+
+  bool _didInit = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_loading) _loadEncounters();
+    if (!_didInit) {
+      _didInit = true;
+      _uncapturedOnly = context.read<UserSettings>().capturedFeature;
+      _loadEncounters();
+    }
   }
 
   Future<void> _loadEncounters() async {
@@ -59,8 +73,11 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
 
   @override
   Widget build(BuildContext context) {
-    final language = context.watch<UserSettings>().language;
+    final settings = context.watch<UserSettings>();
+    final language = settings.language;
+    final showCapture = settings.capturedFeature;
     final filter = context.watch<GlobalFilterProvider>();
+    final userDatas = context.watch<UserDatas>();
     final versionIds = filter.selectedVersionGroup?.versionIdentifiers;
 
     final filtered = (versionIds == null || versionIds.isEmpty)
@@ -91,33 +108,63 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            icon: const Icon(Icons.directions_walk, size: 16),
-                            label: Text(language == 'fr' ? 'Méthode' : 'Method'),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: SegmentedButton<bool>(
+                              segments: [
+                                ButtonSegment(
+                                  value: true,
+                                  icon: const Icon(Icons.catching_pokemon, size: 16),
+                                  label: const Text('Pokémon'),
+                                ),
+                                ButtonSegment(
+                                  value: false,
+                                  icon: const Icon(Icons.directions_walk, size: 16),
+                                  label: Text(language == 'fr' ? 'Méthode' : 'Method'),
+                                ),
+                              ],
+                              selected: {_pokemonFirst},
+                              onSelectionChanged: (v) => setState(() => _pokemonFirst = v.first),
+                              style: ButtonStyle(
+                                visualDensity: VisualDensity.compact,
+                                textStyle: WidgetStatePropertyAll(
+                                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
                           ),
-                          ButtonSegment(
-                            value: true,
-                            icon: const Icon(Icons.catching_pokemon, size: 16),
-                            label: const Text('Pokémon'),
-                          ),
+                          if (showCapture) ...[
+                            const SizedBox(width: 8),
+                            FilterChip(
+                              avatar: Icon(
+                                _uncapturedOnly
+                                    ? Icons.catching_pokemon
+                                    : Icons.catching_pokemon_outlined,
+                                size: 16,
+                                color: _uncapturedOnly ? const Color(0xFFE53935) : Colors.black54,
+                              ),
+                              label: Text(
+                                language == 'fr' ? 'Manquants' : 'Missing',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _uncapturedOnly ? const Color(0xFFE53935) : Colors.black87,
+                                  fontWeight: _uncapturedOnly ? FontWeight.w600 : FontWeight.normal,
+                                ),
+                              ),
+                              selected: _uncapturedOnly,
+                              onSelected: (v) => setState(() => _uncapturedOnly = v),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ],
                         ],
-                        selected: {_pokemonFirst},
-                        onSelectionChanged: (v) => setState(() => _pokemonFirst = v.first),
-                        style: ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          textStyle: WidgetStatePropertyAll(
-                            const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                        ),
                       ),
                     ),
                     Expanded(
                       child: _pokemonFirst
-                          ? _buildPokemonFirstContent(filtered, language)
-                          : _buildContent(filtered, language),
+                          ? _buildPokemonFirstContent(filtered, language, userDatas: showCapture && _uncapturedOnly ? userDatas : null)
+                          : _buildContent(filtered, language, userDatas: showCapture && _uncapturedOnly ? userDatas : null),
                     ),
                   ],
                 ),
@@ -125,12 +172,32 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
   }
 
   int _totalChance(List<LocationPokemonEncounter> encs) {
-    final seen = <int>{};
-    var total = 0;
-    for (final e in encs) {
-      if (seen.add(e.slotId)) total += e.chance;
+    final areas = encs.map((e) => e.areaIdentifier).toSet();
+    if (areas.length <= 1) {
+      // Single area: sum chances by level
+      final map = <String, int>{};
+      for (final e in encs) {
+        final key = '${e.minLevel}-${e.maxLevel}';
+        map[key] = (map[key] ?? 0) + e.chance;
+      }
+      final total = map.values.fold(0, (sum, c) => sum + c);
+      return total > 100 ? 100 : total;
     }
-    return total > 100 ? 100 : total;
+    // Multiple areas: average per area
+    final perArea = <String, int>{};
+    for (final area in areas) {
+      final areaEncs = encs.where((e) => e.areaIdentifier == area);
+      final map = <String, int>{};
+      for (final e in areaEncs) {
+        final key = '${e.minLevel}-${e.maxLevel}';
+        map[key] = (map[key] ?? 0) + e.chance;
+      }
+      var total = map.values.fold(0, (sum, c) => sum + c);
+      if (total > 100) total = 100;
+      perArea[area] = total;
+    }
+    final avg = perArea.values.fold(0, (sum, c) => sum + c) ~/ perArea.length;
+    return avg > 100 ? 100 : avg;
   }
 
   List<Widget> _buildPokemonTiles(List<LocationPokemonEncounter> encs, String language) {
@@ -149,7 +216,7 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
         .toList();
   }
 
-  Widget _buildPokemonFirstContent(List<LocationPokemonEncounter> encounters, String language) {
+  Widget _buildPokemonFirstContent(List<LocationPokemonEncounter> encounters, String language, {UserDatas? userDatas}) {
     final byVersion = <String, List<LocationPokemonEncounter>>{};
     for (final e in encounters) {
       byVersion.putIfAbsent(e.versionIdentifier, () => []).add(e);
@@ -164,13 +231,22 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
         for (final e in entry.value) {
           byPokemon.putIfAbsent(e.pokemonId, () => []).add(e);
         }
+
+        // Filter uncaptured only
+        var sortedIds = byPokemon.keys.toList();
+        if (userDatas != null) {
+          sortedIds = sortedIds.where((id) {
+            final identifier = byPokemon[id]!.first.pokemonIdentifier;
+            return !(userDatas.getUserPokemon(identifier)?.captured ?? false);
+          }).toList();
+        }
+
         // Sort alphabetically by pokemon name
-        final sortedIds = byPokemon.keys.toList()
-          ..sort((a, b) {
-            final nameA = byPokemon[a]!.first.getPokemonName(language);
-            final nameB = byPokemon[b]!.first.getPokemonName(language);
-            return nameA.compareTo(nameB);
-          });
+        sortedIds.sort((a, b) {
+          final nameA = byPokemon[a]!.first.getPokemonName(language);
+          final nameB = byPokemon[b]!.first.getPokemonName(language);
+          return nameA.compareTo(nameB);
+        });
 
         final totalPokemon = sortedIds.length;
 
@@ -186,7 +262,7 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
     );
   }
 
-  Widget _buildContent(List<LocationPokemonEncounter> encounters, String language) {
+  Widget _buildContent(List<LocationPokemonEncounter> encounters, String language, {UserDatas? userDatas}) {
     final byVersion = <String, List<LocationPokemonEncounter>>{};
     for (final e in encounters) {
       byVersion.putIfAbsent(e.versionIdentifier, () => []).add(e);
@@ -203,8 +279,8 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
           byMethod.putIfAbsent(e.methodIdentifier, () => []).add(e);
         }
 
-        final totalPokemon = entry.value.map((e) => e.pokemonId).toSet().length;
-        final hasMultipleMethods = byMethod.length > 1;
+        // Count unique pokemon across all methods (after filter)
+        final allUniquePokemonIds = <int>{};
 
         // Build pokemon tiles grouped by method, sorted alphabetically
         final sortedMethods = byMethod.entries.toList()
@@ -212,26 +288,38 @@ class _DetailLocationPageState extends State<DetailLocationPage> {
               .compareTo(b.value.first.getMethodName(language)));
         final children = <Widget>[];
         for (final methodEntry in sortedMethods) {
-          final methodEncs = methodEntry.value;
-          final pokemonTiles = _buildPokemonTiles(methodEncs, language);
+          var methodEncs = methodEntry.value;
 
-          if (hasMultipleMethods) {
-            final methodName = methodEncs.first.getMethodName(language);
-            children.add(_MethodSection(
-              methodName: methodName,
-              icon: methodIcon(methodEntry.key),
-              pokemonCount: methodEncs.map((e) => e.pokemonId).toSet().length,
-              children: pokemonTiles,
-            ));
-          } else {
-            children.addAll(pokemonTiles);
+          // Filter uncaptured
+          if (userDatas != null) {
+            final uncapturedIds = methodEncs.map((e) => e.pokemonId).toSet()
+                .where((id) {
+              final identifier = methodEncs.firstWhere((e) => e.pokemonId == id).pokemonIdentifier;
+              return !(userDatas.getUserPokemon(identifier)?.captured ?? false);
+            }).toSet();
+            methodEncs = methodEncs.where((e) => uncapturedIds.contains(e.pokemonId)).toList();
           }
+
+          if (methodEncs.isEmpty) continue;
+          final pokemonTiles = _buildPokemonTiles(methodEncs, language);
+          final methodPokemonCount = methodEncs.map((e) => e.pokemonId).toSet().length;
+          allUniquePokemonIds.addAll(methodEncs.map((e) => e.pokemonId));
+
+          final methodName = methodEncs.first.getMethodName(language);
+          children.add(_MethodSection(
+            methodName: methodName,
+            icon: methodIcon(methodEntry.key),
+            pokemonCount: methodPokemonCount,
+            children: pokemonTiles,
+          ));
         }
+
+        if (children.isEmpty) return const SizedBox.shrink();
 
         return VersionHeader(
           versionIdentifier: entry.key,
           versionLabel: entry.value.first.getVersionName(language),
-          subtitle: '$totalPokemon Pokémon',
+          subtitle: '${allUniquePokemonIds.length} Pokémon',
           children: children,
         );
       }).toList(),
@@ -321,6 +409,10 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
   Widget build(BuildContext context) {
     final first = widget.encounters.first;
     final language = widget.language;
+    final settings = context.watch<UserSettings>();
+    final showCapture = settings.capturedFeature;
+    final userDatas = context.watch<UserDatas>();
+    final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.captured ?? false;
 
     final globalMin = widget.encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
     final globalMax = widget.encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
@@ -336,6 +428,7 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
         minLevel: e.minLevel,
         maxLevel: e.maxLevel,
         chance: e.chance,
+        area: e.getAreaName(language),
       )),
     );
 
@@ -348,62 +441,81 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              Row(
-                children: [
-                  CachedNetworkImage(
-                    imageUrl: first.spriteUrl,
-                    width: 48,
-                    height: 48,
-                    placeholder: (_, _) => const SizedBox(
-                      width: 48, height: 48,
-                      child: Center(
-                        child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+              SizedBox(
+                height: 48,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (showCapture)
+                      GestureDetector(
+                        onTap: () {
+                          userDatas.capturedPokemon(first.pokemonIdentifier, !isCaptured);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Icon(
+                            isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
+                            size: 22,
+                            color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
+                          ),
+                        ),
+                      ),
+                    CachedNetworkImage(
+                      imageUrl: first.spriteUrl,
+                      width: 48,
+                      height: 48,
+                      placeholder: (_, _) => const SizedBox(
+                        width: 48, height: 48,
+                        child: Center(
+                          child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                        ),
+                      ),
+                      errorWidget: (_, _, _) =>
+                          const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            first.getPokemonName(language),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: first.pokemonTypes.map((t) => Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: TypeChip(type: t, language: language, fontSize: 9),
+                            )).toList(),
+                          ),
+                        ],
                       ),
                     ),
-                    errorWidget: (_, _, _) =>
-                        const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          first.getPokemonName(language),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        globalLevelText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey.shade700,
                         ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: first.pokemonTypes.map((t) => Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: TypeChip(type: t, language: language, fontSize: 9),
-                          )).toList(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      globalLevelText,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blueGrey.shade700,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: Colors.grey.shade400,
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: Colors.grey.shade400,
+                    ),
+                  ],
+                ),
               ),
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
@@ -448,100 +560,259 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
   }
 }
 
-class _PokemonEncounterTile extends StatelessWidget {
+/// Merge encounters with same level range and area into a single entry with summed chance.
+List<({String levelText, int chance, String area})> _mergeByLevel(List<LocationPokemonEncounter> encounters, {String language = 'fr'}) {
+  final hasMultipleAreas = encounters.map((e) => e.areaIdentifier).toSet().length > 1;
+  final map = <String, ({int chance, String area})>{};
+  for (final e in encounters) {
+    final levelPart = e.minLevel == e.maxLevel
+        ? 'Niv. ${e.minLevel}'
+        : 'Niv. ${e.minLevel}–${e.maxLevel}';
+    final areaName = hasMultipleAreas ? e.getAreaName(language) : '';
+    final key = hasMultipleAreas ? '$levelPart|$areaName' : levelPart;
+    final existing = map[key];
+    map[key] = (chance: (existing?.chance ?? 0) + e.chance, area: areaName);
+  }
+  final result = map.entries.map((e) => (
+    levelText: e.key.split('|').first,
+    chance: e.value.chance > 100 ? 100 : e.value.chance,
+    area: e.value.area,
+  )).toList();
+  // Sort by area name, then by level text
+  result.sort((a, b) {
+    final cmp = a.area.compareTo(b.area);
+    if (cmp != 0) return cmp;
+    return a.levelText.compareTo(b.levelText);
+  });
+  return result;
+}
+
+class _PokemonEncounterTile extends StatefulWidget {
   final List<LocationPokemonEncounter> encounters;
   final String language;
 
   const _PokemonEncounterTile({required this.encounters, required this.language});
 
   @override
+  State<_PokemonEncounterTile> createState() => _PokemonEncounterTileState();
+}
+
+class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final first = encounters.first;
+    final first = widget.encounters.first;
+    final language = widget.language;
+    final settings = context.watch<UserSettings>();
+    final showCapture = settings.capturedFeature;
+    final userDatas = context.watch<UserDatas>();
+    final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.captured ?? false;
 
-    final methods = mergeByMethod(
-      entries: encounters.map((e) => (
-        key: e.methodIdentifier,
-        label: e.getMethodName(language),
-        slotId: e.slotId,
-        minLevel: e.minLevel,
-        maxLevel: e.maxLevel,
-        chance: e.chance,
-      )),
-    );
-
-    final globalMin = encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
-    final globalMax = encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
+    final globalMin = widget.encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
+    final globalMax = widget.encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
     final globalLevelText = globalMin == globalMax
         ? 'Niv. $globalMin'
         : 'Niv. $globalMin–$globalMax';
 
+    final mergedLevels = _mergeByLevel(widget.encounters, language: language);
+    // Average chance across areas if multiple
+    final areas = widget.encounters.map((e) => e.areaIdentifier).toSet();
+    int totalChance;
+    if (areas.length <= 1) {
+      totalChance = mergedLevels.fold(0, (sum, e) => sum + e.chance);
+    } else {
+      final perArea = <String, int>{};
+      for (final area in areas) {
+        final areaLevels = _mergeByLevel(
+          widget.encounters.where((e) => e.areaIdentifier == area).toList(),
+          language: language,
+        );
+        var t = areaLevels.fold(0, (sum, e) => sum + e.chance);
+        if (t > 100) t = 100;
+        perArea[area] = t;
+      }
+      totalChance = perArea.values.fold(0, (sum, c) => sum + c) ~/ perArea.length;
+    }
+    if (totalChance > 100) totalChance = 100;
+    final hasLevelDetail = mergedLevels.length > 1;
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
       child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => DetailPokemon(pokemonId: first.pokemonId),
-          ),
-        ),
+        onTap: hasLevelDetail ? () => setState(() => _expanded = !_expanded) : null,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              Row(
-                children: [
-                  CachedNetworkImage(
-                    imageUrl: first.spriteUrl,
-                    width: 48,
-                    height: 48,
-                    placeholder: (_, _) => const SizedBox(
-                      width: 48, height: 48,
-                      child: Center(
-                        child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+              SizedBox(
+                height: 48,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (showCapture)
+                      GestureDetector(
+                        onTap: () {
+                          userDatas.capturedPokemon(first.pokemonIdentifier, !isCaptured);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Icon(
+                            isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
+                            size: 22,
+                            color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
+                          ),
+                        ),
+                      ),
+                    CachedNetworkImage(
+                      imageUrl: first.spriteUrl,
+                      width: 48,
+                      height: 48,
+                      placeholder: (_, _) => const SizedBox(
+                        width: 48, height: 48,
+                        child: Center(
+                          child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                        ),
+                      ),
+                      errorWidget: (_, _, _) =>
+                          const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            first.getPokemonName(language),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: first.pokemonTypes.map((t) => Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: TypeChip(type: t, language: language, fontSize: 9),
+                            )).toList(),
+                          ),
+                        ],
                       ),
                     ),
-                    errorWidget: (_, _, _) =>
-                        const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          first.getPokemonName(language),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            globalLevelText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blueGrey.shade700,
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: first.pokemonTypes.map((t) => Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: TypeChip(type: t, language: language, fontSize: 9),
-                          )).toList(),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: chanceColor(totalChance),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$totalChance%',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      globalLevelText,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blueGrey.shade700,
+                    if (hasLevelDetail) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        _expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 18,
+                        color: Colors.grey.shade400,
                       ),
-                    ),
-                  ),
-                ],
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              ...methods.map((m) => MethodRow(method: m)),
+              if (hasLevelDetail)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                child: _expanded
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Column(
+                          children: [
+                            ...mergedLevels.map((e) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  children: [
+                                    if (e.area.isNotEmpty) ...[
+                                      Text(
+                                        e.area,
+                                        style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade400, fontStyle: FontStyle.italic),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Text(
+                                      e.levelText,
+                                      style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: chanceColor(e.chance).withValues(alpha: 0.8),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '${e.chance}%',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 4),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => DetailPokemon(pokemonId: first.pokemonId),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.open_in_new, size: 14),
+                                label: Text(
+                                  language == 'fr' ? 'Voir le Pokémon' : 'View Pokémon',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ],
           ),
         ),
