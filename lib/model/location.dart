@@ -83,6 +83,7 @@ class LocationPokemonEncounter {
   final Map<int, String> pokemonNames;
   final List<TypePokemon> pokemonTypes;
   final int versionId;
+  final int versionGroupId;
   final String versionIdentifier;
   final Map<int, String> versionNames;
   final String methodIdentifier;
@@ -100,6 +101,7 @@ class LocationPokemonEncounter {
     required this.pokemonNames,
     required this.pokemonTypes,
     required this.versionId,
+    required this.versionGroupId,
     required this.versionIdentifier,
     required this.versionNames,
     required this.methodIdentifier,
@@ -146,6 +148,7 @@ class LocationPokemonEncounter {
 
     final versionJson = json['pokemon_v2_version'] as Map<String, dynamic>? ?? {};
     final versionId = versionJson['id'] as int? ?? 0;
+    final versionGroupId = versionJson['version_group_id'] as int? ?? 0;
     final versionIdentifier = versionJson['name'] as String? ?? '';
     final versionNames = <int, String>{};
     for (final n in (versionJson['pokemon_v2_versionnames'] as List? ?? [])) {
@@ -177,6 +180,7 @@ class LocationPokemonEncounter {
       pokemonNames: pokemonNames,
       pokemonTypes: pokemonTypes,
       versionId: versionId,
+      versionGroupId: versionGroupId,
       versionIdentifier: versionIdentifier,
       versionNames: versionNames,
       methodIdentifier: methodIdentifier,

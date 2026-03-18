@@ -412,7 +412,7 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
     final settings = context.watch<UserSettings>();
     final showCapture = settings.capturedFeature;
     final userDatas = context.watch<UserDatas>();
-    final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.captured ?? false;
+    final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.isCapturedIn(first.versionGroupId) ?? false;
 
     final globalMin = widget.encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
     final globalMax = widget.encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
@@ -432,6 +432,14 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
       )),
     );
 
+    // Collect unique area names
+    final pokemonAreaNames = widget.encounters
+        .map((e) => e.getAreaName(language))
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
       child: InkWell(
@@ -441,58 +449,65 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              SizedBox(
-                height: 48,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (showCapture)
-                      GestureDetector(
-                        onTap: () {
-                          userDatas.capturedPokemon(first.pokemonIdentifier, !isCaptured);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: Icon(
-                            isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
-                            size: 22,
-                            color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
-                          ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (showCapture)
+                    GestureDetector(
+                      onTap: () {
+                        userDatas.capturedPokemon(first.pokemonIdentifier, !isCaptured, versionGroupId: first.versionGroupId);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Icon(
+                          isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
+                          size: 22,
+                          color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
                         ),
                       ),
-                    CachedNetworkImage(
-                      imageUrl: first.spriteUrl,
-                      width: 48,
-                      height: 48,
-                      placeholder: (_, _) => const SizedBox(
-                        width: 48, height: 48,
-                        child: Center(
-                          child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
-                        ),
-                      ),
-                      errorWidget: (_, _, _) =>
-                          const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                  CachedNetworkImage(
+                    imageUrl: first.spriteUrl,
+                    width: 48,
+                    height: 48,
+                    placeholder: (_, _) => const SizedBox(
+                      width: 48, height: 48,
+                      child: Center(
+                        child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                      ),
+                    ),
+                    errorWidget: (_, _, _) =>
+                        const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          first.getPokemonName(language),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: first.pokemonTypes.map((t) => Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: TypeChip(type: t, language: language, fontSize: 9),
+                          )).toList(),
+                        ),
+                        if (pokemonAreaNames.isNotEmpty) ...[
+                          const SizedBox(height: 2),
                           Text(
-                            first.getPokemonName(language),
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: first.pokemonTypes.map((t) => Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: TypeChip(type: t, language: language, fontSize: 9),
-                            )).toList(),
+                            pokemonAreaNames.join(', '),
+                            style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade400, fontStyle: FontStyle.italic),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
-                      ),
+                      ],
                     ),
+                  ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -516,7 +531,6 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
                     ),
                   ],
                 ),
-              ),
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
                 child: _expanded
@@ -561,15 +575,16 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
 }
 
 /// Merge encounters with same level range and area into a single entry with summed chance.
-List<({String levelText, int chance, String area})> _mergeByLevel(List<LocationPokemonEncounter> encounters, {String language = 'fr'}) {
+List<({String levelText, int chance, String area})> _mergeByLevel(List<LocationPokemonEncounter> encounters, {String language = 'fr', bool forceArea = false}) {
   final hasMultipleAreas = encounters.map((e) => e.areaIdentifier).toSet().length > 1;
+  final showArea = hasMultipleAreas || forceArea;
   final map = <String, ({int chance, String area})>{};
   for (final e in encounters) {
     final levelPart = e.minLevel == e.maxLevel
         ? 'Niv. ${e.minLevel}'
         : 'Niv. ${e.minLevel}–${e.maxLevel}';
-    final areaName = hasMultipleAreas ? e.getAreaName(language) : '';
-    final key = hasMultipleAreas ? '$levelPart|$areaName' : levelPart;
+    final areaName = showArea ? e.getAreaName(language) : '';
+    final key = showArea && areaName.isNotEmpty ? '$levelPart|$areaName' : levelPart;
     final existing = map[key];
     map[key] = (chance: (existing?.chance ?? 0) + e.chance, area: areaName);
   }
@@ -607,7 +622,7 @@ class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
     final settings = context.watch<UserSettings>();
     final showCapture = settings.capturedFeature;
     final userDatas = context.watch<UserDatas>();
-    final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.captured ?? false;
+    final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.isCapturedIn(first.versionGroupId) ?? false;
 
     final globalMin = widget.encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
     final globalMax = widget.encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
@@ -615,7 +630,7 @@ class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
         ? 'Niv. $globalMin'
         : 'Niv. $globalMin–$globalMax';
 
-    final mergedLevels = _mergeByLevel(widget.encounters, language: language);
+    final mergedLevels = _mergeByLevel(widget.encounters, language: language, forceArea: true);
     // Average chance across areas if multiple
     final areas = widget.encounters.map((e) => e.areaIdentifier).toSet();
     int totalChance;
@@ -637,6 +652,14 @@ class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
     if (totalChance > 100) totalChance = 100;
     final hasLevelDetail = mergedLevels.length > 1;
 
+    // Collect unique area names
+    final areaNames = widget.encounters
+        .map((e) => e.getAreaName(language))
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
       child: InkWell(
@@ -646,58 +669,65 @@ class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              SizedBox(
-                height: 48,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (showCapture)
-                      GestureDetector(
-                        onTap: () {
-                          userDatas.capturedPokemon(first.pokemonIdentifier, !isCaptured);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: Icon(
-                            isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
-                            size: 22,
-                            color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
-                          ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (showCapture)
+                    GestureDetector(
+                      onTap: () {
+                        userDatas.capturedPokemon(first.pokemonIdentifier, !isCaptured, versionGroupId: first.versionGroupId);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Icon(
+                          isCaptured ? Icons.catching_pokemon : Icons.catching_pokemon_outlined,
+                          size: 22,
+                          color: isCaptured ? const Color(0xFFE53935) : Colors.grey.shade400,
                         ),
                       ),
-                    CachedNetworkImage(
-                      imageUrl: first.spriteUrl,
-                      width: 48,
-                      height: 48,
-                      placeholder: (_, _) => const SizedBox(
-                        width: 48, height: 48,
-                        child: Center(
-                          child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
-                        ),
-                      ),
-                      errorWidget: (_, _, _) =>
-                          const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                  CachedNetworkImage(
+                    imageUrl: first.spriteUrl,
+                    width: 48,
+                    height: 48,
+                    placeholder: (_, _) => const SizedBox(
+                      width: 48, height: 48,
+                      child: Center(
+                        child: Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                      ),
+                    ),
+                    errorWidget: (_, _, _) =>
+                        const Icon(Icons.catching_pokemon, color: Colors.grey, size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          first.getPokemonName(language),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: first.pokemonTypes.map((t) => Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: TypeChip(type: t, language: language, fontSize: 9),
+                          )).toList(),
+                        ),
+                        if (areaNames.isNotEmpty) ...[
+                          const SizedBox(height: 2),
                           Text(
-                            first.getPokemonName(language),
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: first.pokemonTypes.map((t) => Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: TypeChip(type: t, language: language, fontSize: 9),
-                            )).toList(),
+                            areaNames.join(', '),
+                            style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade400, fontStyle: FontStyle.italic),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
-                      ),
+                      ],
                     ),
+                  ),
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -745,7 +775,6 @@ class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
                     ],
                   ],
                 ),
-              ),
               if (hasLevelDetail)
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),

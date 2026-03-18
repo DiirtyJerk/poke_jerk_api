@@ -308,6 +308,7 @@ query GetPokemonDetail($id: Int!) {
       pokemon_v2_version {
         id
         name
+        version_group_id
         pokemon_v2_versionnames(where: {language_id: {_in: [5, 9]}}) {
           name
           language_id
@@ -787,6 +788,7 @@ query GetLocationDetail($locationId: Int!) {
     pokemon_v2_version {
       id
       name
+      version_group_id
       pokemon_v2_versionnames(where: {language_id: {_in: [5, 9]}}) {
         name
         language_id
