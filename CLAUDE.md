@@ -54,3 +54,11 @@ When modifying Hive models, regenerate adapters with `dart run build_runner buil
 - Bilingual support: all user-facing text checks `language == 'fr'` for French, falls back to English
 - Sprite URLs use official artwork from PokeAPI GitHub sprites repo
 - Models use `Map<int, String>` for localized name storage (key = PokeAPI language_id)
+
+### Code Quality Rules
+
+**1. Extract duplicated logic into helpers**
+When the same computation appears in more than one widget or function, extract it as a file-private helper (prefix `_`) rather than inlining it at each call site. Example: `_sortedAreaNames(List<LocationPokemonEncounter>, String language)` instead of repeating the `.map().where().toSet().toList()..sort()` chain.
+
+**2. Single-pass loops over lists**
+Never iterate the same list multiple times for independent reductions. Replace chained `.map().reduce()` calls (one per value) with a single `for` loop that computes all values at once. Example: compute both `globalMin` and `globalMax` in one loop instead of two separate `.reduce()` passes.

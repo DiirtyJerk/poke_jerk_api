@@ -414,8 +414,12 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
     final userDatas = context.watch<UserDatas>();
     final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.isCapturedIn(first.versionGroupId) ?? false;
 
-    final globalMin = widget.encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
-    final globalMax = widget.encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
+    var globalMin = widget.encounters.first.minLevel;
+    var globalMax = widget.encounters.first.maxLevel;
+    for (final e in widget.encounters) {
+      if (e.minLevel < globalMin) globalMin = e.minLevel;
+      if (e.maxLevel > globalMax) globalMax = e.maxLevel;
+    }
     final globalLevelText = globalMin == globalMax
         ? 'Niv. $globalMin'
         : 'Niv. $globalMin–$globalMax';
@@ -432,13 +436,7 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
       )),
     );
 
-    // Collect unique area names
-    final pokemonAreaNames = widget.encounters
-        .map((e) => e.getAreaName(language))
-        .where((a) => a.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final pokemonAreaNames = _sortedAreaNames(widget.encounters, language);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
@@ -574,6 +572,9 @@ class _PokemonFirstTileState extends State<_PokemonFirstTile> {
   }
 }
 
+List<String> _sortedAreaNames(List<LocationPokemonEncounter> encounters, String language) =>
+    (encounters.map((e) => e.getAreaName(language)).where((a) => a.isNotEmpty).toSet().toList()..sort());
+
 /// Merge encounters with same level range and area into a single entry with summed chance.
 List<({String levelText, int chance, String area})> _mergeByLevel(List<LocationPokemonEncounter> encounters, {String language = 'fr', bool forceArea = false}) {
   final hasMultipleAreas = encounters.map((e) => e.areaIdentifier).toSet().length > 1;
@@ -624,41 +625,38 @@ class _PokemonEncounterTileState extends State<_PokemonEncounterTile> {
     final userDatas = context.watch<UserDatas>();
     final isCaptured = userDatas.getUserPokemon(first.pokemonIdentifier)?.isCapturedIn(first.versionGroupId) ?? false;
 
-    final globalMin = widget.encounters.map((e) => e.minLevel).reduce((a, b) => a < b ? a : b);
-    final globalMax = widget.encounters.map((e) => e.maxLevel).reduce((a, b) => a > b ? a : b);
+    var globalMin = widget.encounters.first.minLevel;
+    var globalMax = widget.encounters.first.maxLevel;
+    for (final e in widget.encounters) {
+      if (e.minLevel < globalMin) globalMin = e.minLevel;
+      if (e.maxLevel > globalMax) globalMax = e.maxLevel;
+    }
     final globalLevelText = globalMin == globalMax
         ? 'Niv. $globalMin'
         : 'Niv. $globalMin–$globalMax';
 
     final mergedLevels = _mergeByLevel(widget.encounters, language: language, forceArea: true);
     // Average chance across areas if multiple
-    final areas = widget.encounters.map((e) => e.areaIdentifier).toSet();
+    final byArea = <String, List<LocationPokemonEncounter>>{};
+    for (final e in widget.encounters) {
+      (byArea[e.areaIdentifier] ??= []).add(e);
+    }
     int totalChance;
-    if (areas.length <= 1) {
+    if (byArea.length <= 1) {
       totalChance = mergedLevels.fold(0, (sum, e) => sum + e.chance);
     } else {
-      final perArea = <String, int>{};
-      for (final area in areas) {
-        final areaLevels = _mergeByLevel(
-          widget.encounters.where((e) => e.areaIdentifier == area).toList(),
-          language: language,
-        );
-        var t = areaLevels.fold(0, (sum, e) => sum + e.chance);
+      var areaSum = 0;
+      for (final areaEncs in byArea.values) {
+        var t = _mergeByLevel(areaEncs, language: language).fold(0, (sum, e) => sum + e.chance);
         if (t > 100) t = 100;
-        perArea[area] = t;
+        areaSum += t;
       }
-      totalChance = perArea.values.fold(0, (sum, c) => sum + c) ~/ perArea.length;
+      totalChance = areaSum ~/ byArea.length;
     }
     if (totalChance > 100) totalChance = 100;
     final hasLevelDetail = mergedLevels.length > 1;
 
-    // Collect unique area names
-    final areaNames = widget.encounters
-        .map((e) => e.getAreaName(language))
-        .where((a) => a.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final areaNames = _sortedAreaNames(widget.encounters, language);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),

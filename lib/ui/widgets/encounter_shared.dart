@@ -307,8 +307,7 @@ class _MethodRowState extends State<MethodRow> {
 
   Widget _buildSlotDetail(MergedMethod method) {
     final areasWithNames = method.slots.map((s) => s.area).where((a) => a.isNotEmpty).toSet();
-    final hasMultipleAreas = areasWithNames.length > 1;
-    final showArea = hasMultipleAreas || areasWithNames.isNotEmpty;
+    final showArea = areasWithNames.isNotEmpty;
 
     // Merge slots with same level range + area
     final merged = <String, ({int chance, String area})>{};
@@ -333,7 +332,7 @@ class _MethodRowState extends State<MethodRow> {
         children: merged.entries.map((e) {
           final chance = e.value.chance > 100 ? 100 : e.value.chance;
           final levelText = e.key.split('|').first;
-          final area = showArea ? e.value.area : '';
+          final area = e.value.area;
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 1),
             child: Row(
