@@ -6,7 +6,9 @@ import 'package:poke_jerk_api/model/type_chart.dart';
 import 'package:poke_jerk_api/ui/uiBuilder/colorbuilder.dart';
 
 
-class StatsTab extends StatelessWidget {
+enum _RadarMode { base, lv50, lv100 }
+
+class StatsTab extends StatefulWidget {
   final Pokemon pokemon;
   final String language;
   final Color accentColor;
@@ -19,7 +21,46 @@ class StatsTab extends StatelessWidget {
   });
 
   @override
+  State<StatsTab> createState() => _StatsTabState();
+}
+
+class _StatsTabState extends State<StatsTab> {
+  _RadarMode _mode = _RadarMode.base;
+
+  /// Returns (minStats, maxStats) for a given level. For base mode both are identical.
+  (Map<Stat, int>, Map<Stat, int>) _computeRange(_RadarMode mode) {
+    final pokemon = widget.pokemon;
+    final isShedinja = pokemon.identifier == 'shedinja';
+    final mins = <Stat, int>{};
+    final maxs = <Stat, int>{};
+    for (final entry in pokemon.stats.entries) {
+      final base = entry.value;
+      final isHp = entry.key.identifier == 'hp';
+      if (mode == _RadarMode.base) {
+        mins[entry.key] = base;
+        maxs[entry.key] = base;
+      } else {
+        final level = mode == _RadarMode.lv50 ? 50 : 100;
+        if (isShedinja && isHp) {
+          mins[entry.key] = 1;
+          maxs[entry.key] = 1;
+        } else if (isHp) {
+          mins[entry.key] = _calcHp(base, level, iv: 0, ev: 0);
+          maxs[entry.key] = _calcHp(base, level, iv: 31, ev: 252);
+        } else {
+          mins[entry.key] = _calcStat(base, level, iv: 0, ev: 0, nature: 0.9);
+          maxs[entry.key] = _calcStat(base, level, iv: 31, ev: 252, nature: 1.1);
+        }
+      }
+    }
+    return (mins, maxs);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final pokemon = widget.pokemon;
+    final language = widget.language;
+    final accentColor = widget.accentColor;
     final species = pokemon.species;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -41,29 +82,52 @@ class StatsTab extends StatelessWidget {
         const SizedBox(height: 24),
 
         _SectionHeader(
-          title: language == 'fr' ? 'Stats de base' : 'Base stats',
+          title: language == 'fr' ? 'Statistiques' : 'Stats',
           color: accentColor,
         ),
         const SizedBox(height: 8),
-        // Radar chart
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          padding: const EdgeInsets.all(8),
-          child: AspectRatio(
-            aspectRatio: 1.1,
-            child: CustomPaint(
-              painter: _StatRadarPainter(
-                stats: pokemon.stats,
-                accentColor: accentColor,
-                language: language,
-              ),
+        // Mode selector
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<_RadarMode>(
+            segments: [
+              ButtonSegment(value: _RadarMode.base, label: Text('Base', style: const TextStyle(fontSize: 12))),
+              ButtonSegment(value: _RadarMode.lv50, label: Text('Niv. 50', style: const TextStyle(fontSize: 12))),
+              ButtonSegment(value: _RadarMode.lv100, label: Text('Niv. 100', style: const TextStyle(fontSize: 12))),
+            ],
+            selected: {_mode},
+            onSelectionChanged: (s) => setState(() => _mode = s.first),
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ),
         ),
+        const SizedBox(height: 8),
+        // Radar chart
+        Builder(builder: (_) {
+          final (minStats, maxStats) = _computeRange(_mode);
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            padding: const EdgeInsets.all(8),
+            child: AspectRatio(
+              aspectRatio: 1.1,
+              child: CustomPaint(
+                painter: _StatRadarPainter(
+                  stats: maxStats,
+                  minStats: _mode != _RadarMode.base ? minStats : null,
+                  accentColor: accentColor,
+                  language: language,
+                ),
+              ),
+            ),
+          );
+        }),
 
         const SizedBox(height: 24),
 
@@ -430,15 +494,27 @@ class _InfoGrid extends StatelessWidget {
   }
 }
 
+// ── Stat Range Table (min/max at Lv.50 & Lv.100) ────────────────────────────
+
+int _calcHp(int base, int level, {required int iv, required int ev}) {
+  return ((2 * base + iv + ev ~/ 4) * level ~/ 100) + level + 10;
+}
+
+int _calcStat(int base, int level, {required int iv, required int ev, required double nature}) {
+  return (((2 * base + iv + ev ~/ 4) * level ~/ 100 + 5) * nature).floor();
+}
+
 // ─── Radar Chart Painter ──────────────────────────────────────────────────────
 
 class _StatRadarPainter extends CustomPainter {
   final Map<Stat, int> stats;
+  final Map<Stat, int>? minStats;
   final Color accentColor;
   final String language;
 
   _StatRadarPainter({
     required this.stats,
+    this.minStats,
     required this.accentColor,
     required this.language,
   });
@@ -502,7 +578,30 @@ class _StatRadarPainter extends CustomPainter {
       canvas.drawLine(center, pt, gridPaint);
     }
 
-    // Data polygon
+    // Min polygon (drawn first, behind max)
+    if (minStats != null) {
+      final minEntries = minStats!.entries.toList();
+      final minPath = Path();
+      for (int i = 0; i <= n; i++) {
+        final idx = i % n;
+        final val = (minEntries[idx].value / _visualMax).clamp(0.0, 1.0);
+        final angle = startAngle + angleStep * idx;
+        final pt = Offset(
+          center.dx + radius * val * math.cos(angle),
+          center.dy + radius * val * math.sin(angle),
+        );
+        if (i == 0) { minPath.moveTo(pt.dx, pt.dy); } else { minPath.lineTo(pt.dx, pt.dy); }
+      }
+      canvas.drawPath(minPath, Paint()
+        ..color = Colors.orange.withValues(alpha: 0.15)
+        ..style = PaintingStyle.fill);
+      canvas.drawPath(minPath, Paint()
+        ..color = Colors.orange
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5);
+    }
+
+    // Max / base polygon
     final dataPath = Path();
     final fillPaint = Paint()
       ..color = accentColor.withValues(alpha: 0.2)
@@ -554,6 +653,8 @@ class _StatRadarPainter extends CustomPainter {
       );
 
       final name = _shortStatName(entry.key.identifier);
+      final minVal = minStats?.entries.toList()[i].value;
+      final valueText = minVal != null ? '$minVal - ${entry.value}' : '${entry.value}';
       final tp = TextPainter(
         text: TextSpan(
           children: [
@@ -566,9 +667,9 @@ class _StatRadarPainter extends CustomPainter {
               ),
             ),
             TextSpan(
-              text: '\n${entry.value}',
+              text: '\n$valueText',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: minVal != null ? 9 : 11,
                 fontWeight: FontWeight.bold,
                 color: accentColor,
               ),
@@ -598,5 +699,5 @@ class _StatRadarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _StatRadarPainter oldDelegate) =>
-      stats != oldDelegate.stats || accentColor != oldDelegate.accentColor;
+      stats != oldDelegate.stats || minStats != oldDelegate.minStats || accentColor != oldDelegate.accentColor;
 }

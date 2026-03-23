@@ -53,6 +53,17 @@ class SettingsPage extends StatelessWidget {
 
           const Divider(),
 
+          // Dark mode
+          SwitchListTile(
+            title: Text(language == 'fr' ? 'Mode sombre' : 'Dark mode'),
+            subtitle: Text(language == 'fr' ? 'Thème sombre pour l\'application' : 'Dark theme for the app'),
+            secondary: Icon(settings.darkMode ? Icons.dark_mode : Icons.light_mode),
+            value: settings.darkMode,
+            onChanged: settings.setDarkMode,
+          ),
+
+          const Divider(),
+
           // Tab order
           ListTile(
             leading: const Icon(Icons.reorder),

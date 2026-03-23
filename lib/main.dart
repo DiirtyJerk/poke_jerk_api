@@ -70,20 +70,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<UserSettings>().darkMode;
     return GraphQLProvider(
       client: graphQLClient,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Poké Jerk API',
-        theme: _buildTheme(),
+        theme: _buildLightTheme(),
+        darkTheme: _buildDarkTheme(),
+        themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
         home: const Home(),
       ),
     );
   }
 
-  static ThemeData _buildTheme() {
-    return ThemeData(
-      useMaterial3: true,
+  static ThemeData _buildLightTheme() {
+    return _buildTheme(
       colorScheme: const ColorScheme.light(
         primary: _red,
         onPrimary: Colors.white,
@@ -95,7 +97,59 @@ class MyApp extends StatelessWidget {
         onPrimaryContainer: _red,
         outline: Color(0xFFDDDDDD),
       ),
-      scaffoldBackgroundColor: _bg,
+      scaffoldBg: _bg,
+      cardColor: Colors.white,
+      inputFill: Colors.white,
+      inputBorder: const Color(0xFFDDDDDD),
+      inputIcon: const Color(0xFF666666),
+      inputHint: const Color(0xFF999999),
+      divider: const Color(0xFFE8E8E8),
+      navBg: _dark,
+      chipSelected: _red.withValues(alpha: 0.12),
+    );
+  }
+
+  static ThemeData _buildDarkTheme() {
+    return _buildTheme(
+      colorScheme: const ColorScheme.dark(
+        primary: _red,
+        onPrimary: Colors.white,
+        secondary: Color(0xFFBBBBBB),
+        onSecondary: Colors.black,
+        surface: Color(0xFF1E1E1E),
+        onSurface: Color(0xFFE0E0E0),
+        primaryContainer: Color(0xFF5C0000),
+        onPrimaryContainer: Color(0xFFFFB4AB),
+        outline: Color(0xFF444444),
+      ),
+      scaffoldBg: const Color(0xFF121212),
+      cardColor: const Color(0xFF1E1E1E),
+      inputFill: const Color(0xFF2A2A2A),
+      inputBorder: const Color(0xFF444444),
+      inputIcon: const Color(0xFF999999),
+      inputHint: const Color(0xFF777777),
+      divider: const Color(0xFF333333),
+      navBg: const Color(0xFF0D0D0D),
+      chipSelected: _red.withValues(alpha: 0.25),
+    );
+  }
+
+  static ThemeData _buildTheme({
+    required ColorScheme colorScheme,
+    required Color scaffoldBg,
+    required Color cardColor,
+    required Color inputFill,
+    required Color inputBorder,
+    required Color inputIcon,
+    required Color inputHint,
+    required Color divider,
+    required Color navBg,
+    required Color chipSelected,
+  }) {
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: scaffoldBg,
 
       // Police légèrement plus grande par défaut
       textTheme: const TextTheme(
@@ -125,9 +179,9 @@ class MyApp extends StatelessWidget {
         actionsIconTheme: IconThemeData(color: Colors.white),
       ),
 
-      // NavigationBar : fond noir, indicateur rouge, icônes blanches
+      // NavigationBar
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: _dark,
+        backgroundColor: navBg,
         indicatorColor: _red,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.black,
@@ -150,30 +204,29 @@ class MyApp extends StatelessWidget {
         ),
       ),
 
-      // Cartes blanches
+      // Cards
       cardTheme: CardThemeData(
-        color: Colors.white,
+        color: cardColor,
         elevation: 2,
         shadowColor: Colors.black26,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
 
-      // Champs de recherche
+      // Input fields
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: inputFill,
         isDense: true,
-        // Force les icônes à être sombres même dans l'AppBar rouge
-        prefixIconColor: const Color(0xFF666666),
-        suffixIconColor: const Color(0xFF666666),
-        hintStyle: const TextStyle(color: Color(0xFF999999)),
+        prefixIconColor: inputIcon,
+        suffixIconColor: inputIcon,
+        hintStyle: TextStyle(color: inputHint),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+          borderSide: BorderSide(color: inputBorder),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+          borderSide: BorderSide(color: inputBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -189,17 +242,21 @@ class MyApp extends StatelessWidget {
         dividerColor: Color(0xFFEEEEEE),
       ),
 
-      // FilterChip : sélection rouge
+      // FilterChip
       chipTheme: ChipThemeData(
-        selectedColor: _red.withValues(alpha: 0.12),
+        selectedColor: chipSelected,
         checkmarkColor: _red,
         side: const BorderSide(color: Color(0xFFDDDDDD)),
         labelStyle: const TextStyle(fontSize: 12),
       ),
 
-      // Séparateurs légers
-      dividerColor: const Color(0xFFE8E8E8),
-      dividerTheme: const DividerThemeData(color: Color(0xFFE8E8E8), thickness: 1),
+      // Dividers
+      dividerColor: divider,
+      dividerTheme: DividerThemeData(color: divider, thickness: 1),
+
+      // Bottom sheets & dialogs
+      bottomSheetTheme: BottomSheetThemeData(backgroundColor: cardColor),
+      dialogTheme: DialogThemeData(backgroundColor: cardColor),
 
       // FAB rouge
       floatingActionButtonTheme: const FloatingActionButtonThemeData(

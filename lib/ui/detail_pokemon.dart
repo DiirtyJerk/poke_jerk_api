@@ -116,7 +116,7 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
         physics: const ClampingScrollPhysics(),
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
-            expandedHeight: 220,
+            expandedHeight: pokemon.abilities.isNotEmpty ? 260 : 220,
             pinned: true,
             backgroundColor: bgColor,
             foregroundColor: Colors.white,
@@ -167,6 +167,7 @@ class _DetailViewState extends State<_DetailView> with SingleTickerProviderState
                 language: language,
                 bgColor: bgColor,
                 bgColorDark: bgColorDark,
+                generationId: widget.versionFilter?.generationId,
               ),
             ),
           ),

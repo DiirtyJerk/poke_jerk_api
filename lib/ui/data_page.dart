@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:poke_jerk_api/model/user_settings.dart';
 import 'package:poke_jerk_api/ui/items.dart';
 import 'package:poke_jerk_api/ui/moves.dart';
+import 'package:poke_jerk_api/ui/natures_page.dart';
 import 'package:poke_jerk_api/ui/type_chart_page.dart';
 import 'package:provider/provider.dart';
 
@@ -13,25 +14,18 @@ class DataPage extends StatelessWidget {
     final language = context.watch<UserSettings>().language;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           TabBar(
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 12),
             tabs: [
-              Tab(
-                icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                text: language == 'fr' ? 'Objets' : 'Items',
-              ),
-              Tab(
-                icon: const Icon(Icons.flash_on_outlined, size: 18),
-                text: language == 'fr' ? 'Capacités' : 'Moves',
-              ),
-              Tab(
-                icon: const Icon(Icons.grid_view_outlined, size: 18),
-                text: 'Types',
-              ),
+              Tab(text: language == 'fr' ? 'Objets' : 'Items'),
+              Tab(text: language == 'fr' ? 'Capacités' : 'Moves'),
+              const Tab(text: 'Types'),
+              const Tab(text: 'Natures'),
             ],
           ),
           const Expanded(
@@ -40,6 +34,7 @@ class DataPage extends StatelessWidget {
                 ItemsPage(),
                 MovesPage(),
                 TypeChartPage(),
+                NaturesPage(),
               ],
             ),
           ),

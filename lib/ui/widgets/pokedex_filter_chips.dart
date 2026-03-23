@@ -19,13 +19,14 @@ class FilterChip2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFFCC0000);
-    final borderColor = isActive ? activeColor : const Color(0xFFDDDDDD);
-    final textColor = isActive ? activeColor : Colors.black87;
+    final theme = Theme.of(context);
+    final activeColor = theme.colorScheme.primary;
+    final borderColor = isActive ? activeColor : theme.colorScheme.outline;
+    final textColor = isActive ? activeColor : theme.colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
-        color: isActive ? activeColor.withValues(alpha: 0.08) : Colors.white,
+        color: isActive ? activeColor.withValues(alpha: 0.08) : theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: borderColor),
       ),
@@ -119,7 +120,7 @@ class _DlcVersionChip extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFDDDDDD)),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           position: DecorationPosition.foreground,
           child: ColoredBox(
@@ -134,11 +135,11 @@ class _DlcVersionChip extends StatelessWidget {
                   children: [
                     Container(
                       width: iconWidth,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       alignment: Alignment.center,
-                      child: const Icon(Icons.sports_esports_outlined, size: 14, color: Colors.black87),
+                      child: Icon(Icons.sports_esports_outlined, size: 14, color: Theme.of(context).colorScheme.onSurface),
                     ),
-                    Container(width: 1, color: const Color(0xFFDDDDDD)),
+                    Container(width: 1, color: Theme.of(context).colorScheme.outline),
                     for (int i = 0; i < parentParts.length; i++) ...[
                       if (i > 0) Container(width: 1, color: Colors.white24),
                       Expanded(
@@ -160,7 +161,7 @@ class _DlcVersionChip extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(height: 1, color: const Color(0xFFDDDDDD)),
+              Container(height: 1, color: Theme.of(context).colorScheme.outline),
               // Line 2: puzzle icon + DLC colored section
               IntrinsicHeight(
                 child: ColoredBox(
@@ -169,11 +170,11 @@ class _DlcVersionChip extends StatelessWidget {
                     children: [
                       Container(
                         width: iconWidth,
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.surface,
                         alignment: Alignment.center,
-                        child: const Icon(Icons.extension_outlined, size: 14, color: Colors.black87),
+                        child: Icon(Icons.extension_outlined, size: 14, color: Theme.of(context).colorScheme.onSurface),
                       ),
-                      Container(width: 1, color: const Color(0xFFDDDDDD)),
+                      Container(width: 1, color: Theme.of(context).colorScheme.outline),
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -242,9 +243,9 @@ class SplitChip extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFDDDDDD)),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(19),
@@ -255,9 +256,9 @@ class SplitChip extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: Icon(icon, size: 14, color: Colors.black87),
+                child: Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurface),
               ),
-              Container(width: 1, color: const Color(0xFFDDDDDD)),
+              Container(width: 1, color: Theme.of(context).colorScheme.outline),
               ...coloredSections,
             ],
           ),

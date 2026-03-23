@@ -62,6 +62,42 @@ query GetPokemonDetail($id: Int!) {
     weight
     base_experience
     is_default
+    pokemon_v2_pokemoncries {
+      cries
+    }
+    pokemon_v2_pokemonabilities(order_by: {slot: asc}) {
+      slot
+      is_hidden
+      pokemon_v2_ability {
+        id
+        name
+        pokemon_v2_abilitynames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+        pokemon_v2_abilityflavortexts(where: {language_id: {_in: [5, 9]}}, order_by: {version_group_id: desc}, limit: 2) {
+          flavor_text
+          language_id
+        }
+      }
+    }
+    pokemon_v2_pokemonabilitypasts(order_by: {generation_id: desc}) {
+      slot
+      generation_id
+      is_hidden
+      pokemon_v2_ability {
+        id
+        name
+        pokemon_v2_abilitynames(where: {language_id: {_in: [5, 9]}}) {
+          name
+          language_id
+        }
+        pokemon_v2_abilityflavortexts(where: {language_id: {_in: [5, 9]}}, order_by: {version_group_id: desc}, limit: 2) {
+          flavor_text
+          language_id
+        }
+      }
+    }
     pokemon_v2_pokemonstats {
       base_stat
       stat_id

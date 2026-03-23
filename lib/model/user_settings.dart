@@ -20,6 +20,9 @@ class UserSettings extends HiveObject with ChangeNotifier {
   @HiveField(4)
   List<int> tabOrder = [0, 1, 2, 3, 4];
 
+  @HiveField(5, defaultValue: false)
+  bool darkMode = false;
+
   UserSettings._privateConstructor();
 
   static final UserSettings _instance = UserSettings._privateConstructor();
@@ -31,6 +34,7 @@ class UserSettings extends HiveObject with ChangeNotifier {
     _instance.showMega = userSettings.showMega;
     _instance.showBattle = userSettings.showBattle;
     _instance.capturedFeature = userSettings.capturedFeature;
+    _instance.darkMode = userSettings.darkMode;
     final stored = userSettings.tabOrder;
     // Migration: reset if old 7-tab order or invalid
     final validOrder = stored.length == 5 &&
@@ -70,6 +74,12 @@ class UserSettings extends HiveObject with ChangeNotifier {
 
   void setTabOrder(List<int> order) {
     tabOrder = order;
+    notifyListeners();
+    save();
+  }
+
+  void setDarkMode(bool value) {
+    darkMode = value;
     notifyListeners();
     save();
   }

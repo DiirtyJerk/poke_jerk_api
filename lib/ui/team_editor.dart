@@ -541,9 +541,9 @@ class _TypeCoverageTableState extends State<_TypeCoverageTable> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -669,6 +669,69 @@ class _TypeCoverageTableState extends State<_TypeCoverageTable> {
                 ),
               ),
             ],
+          ),
+          // Weakness alerts
+          if (members.isNotEmpty) _buildAlerts(types, charts, language),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlerts(List<String> types, List<Map<String, double>> charts, String language) {
+    final uncovered = <String>[]; // types with >=3 weak and 0 resist
+    final dangerous = <String>[]; // types with >=2 weak and 0 resist
+    for (final t in types) {
+      int weakCount = 0;
+      int resistCount = 0;
+      for (final chart in charts) {
+        final mult = chart[t] ?? 1.0;
+        if (mult >= 2.0) weakCount++;
+        if (mult < 1.0) resistCount++;
+      }
+      if (resistCount == 0 && weakCount >= 3) {
+        uncovered.add(t);
+      } else if (resistCount == 0 && weakCount >= 2) {
+        dangerous.add(t);
+      }
+    }
+
+    if (uncovered.isEmpty && dangerous.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (uncovered.isNotEmpty)
+            _alertRow(
+              Icons.warning_amber_rounded,
+              Colors.red.shade700,
+              language == 'fr'
+                  ? 'Faiblesses critiques : ${uncovered.map((t) => TypeChart.getTypeName(t, language)).join(', ')}'
+                  : 'Critical weaknesses: ${uncovered.map((t) => TypeChart.getTypeName(t, language)).join(', ')}',
+            ),
+          if (dangerous.isNotEmpty)
+            _alertRow(
+              Icons.info_outline,
+              Colors.orange.shade700,
+              language == 'fr'
+                  ? 'Non couvert : ${dangerous.map((t) => TypeChart.getTypeName(t, language)).join(', ')}'
+                  : 'Uncovered: ${dangerous.map((t) => TypeChart.getTypeName(t, language)).join(', ')}',
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _alertRow(IconData icon, Color color, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
           ),
         ],
       ),
@@ -1229,8 +1292,8 @@ class _SuggestionsState extends State<_Suggestions> {
     if (mounted) setState(() => _loading = false);
   }
 
-  /// Analyse team weaknesses and uncovered types.
-  ({List<String> weakTypes, List<String> uncoveredTypes}) _analyzeTeam() {
+  /// Analyse team weaknesses, uncovered types, and weak stats.
+  ({List<String> weakTypes, List<String> uncoveredTypes, List<int> weakStatIds}) _analyzeTeam() {
     final charts = widget.members
         .map((m) => TypeChart.computeDefenseChart(
             m.types.map((t) => t.identifier).toList()))
@@ -1260,12 +1323,31 @@ class _SuggestionsState extends State<_Suggestions> {
       if (!covered) uncoveredTypes.add(type);
     }
 
-    return (weakTypes: weakTypes, uncoveredTypes: uncoveredTypes);
+    // Identify weak stats (avg below 70)
+    final weakStatIds = <int>[];
+    if (widget.members.isNotEmpty) {
+      for (int statId = 1; statId <= 6; statId++) {
+        double sum = 0;
+        int count = 0;
+        for (final m in widget.members) {
+          for (final entry in m.stats.entries) {
+            if (entry.key.id == statId) {
+              sum += entry.value;
+              count++;
+              break;
+            }
+          }
+        }
+        if (count > 0 && sum / count < 70) weakStatIds.add(statId);
+      }
+    }
+
+    return (weakTypes: weakTypes, uncoveredTypes: uncoveredTypes, weakStatIds: weakStatIds);
   }
 
   /// Score candidates and return top 5.
   List<Pokemon> _getTopSuggestions(
-      List<String> weakTypes, List<String> uncoveredTypes) {
+      List<String> weakTypes, List<String> uncoveredTypes, List<int> weakStatIds) {
     final currentIds = widget.team.pokemonIds.toSet();
     final candidates =
         _candidatePool.where((p) => !currentIds.contains(p.id)).toList();
@@ -1279,7 +1361,7 @@ class _SuggestionsState extends State<_Suggestions> {
       for (final weak in weakTypes) {
         final mult = defChart[weak] ?? 1.0;
         if (mult < 1.0) score += 2.0;
-        if (mult == 0.0) score += 1.0;
+        if (mult == 0.0) score += 1.0; // extra bonus for immunity
       }
 
       // Offensive: STAB coverage for uncovered types
@@ -1287,11 +1369,26 @@ class _SuggestionsState extends State<_Suggestions> {
         final targetChart = TypeChart.computeDefenseChart([uncovered]);
         for (final stab in typeIds) {
           final mult = targetChart[stab] ?? 1.0;
-          if (mult > 1.0) {
-            score += 1.5;
-            break;
-          }
+          if (mult > 1.0) { score += 1.5; break; }
         }
+      }
+
+      // Stat boost: reward candidates with high values in team's weak stats
+      for (final statId in weakStatIds) {
+        for (final entry in pokemon.stats.entries) {
+          if (entry.key.id == statId && entry.value >= 90) {
+            score += 1.0;
+          } else if (entry.key.id == statId && entry.value >= 110) {
+            score += 0.5; // extra for very high
+          }
+          break;
+        }
+      }
+
+      // Penalty: adds more of the same weaknesses
+      for (final weak in weakTypes) {
+        final mult = defChart[weak] ?? 1.0;
+        if (mult >= 2.0) score -= 1.0;
       }
 
       return (pokemon: pokemon, score: score);
@@ -1322,11 +1419,12 @@ class _SuggestionsState extends State<_Suggestions> {
     final analysis = _analyzeTeam();
     final weakTypes = analysis.weakTypes;
     final uncoveredTypes = analysis.uncoveredTypes;
+    final weakStatIds = analysis.weakStatIds;
     final language = widget.language;
     final globalFilter = context.watch<GlobalFilterProvider>();
 
     final suggestions = _candidatePool.isNotEmpty
-        ? _getTopSuggestions(weakTypes, uncoveredTypes)
+        ? _getTopSuggestions(weakTypes, uncoveredTypes, weakStatIds)
         : <Pokemon>[];
 
     final versionLabel = globalFilter.selectedVersionGroup != null

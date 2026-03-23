@@ -6,6 +6,76 @@ import 'package:poke_jerk_api/model/stat.dart';
 import 'package:poke_jerk_api/model/type_pokemon.dart';
 import 'package:poke_jerk_api/utils/string_utils.dart';
 
+class PokemonAbility {
+  final int id;
+  final String identifier;
+  final int slot;
+  final bool isHidden;
+  final Map<int, String> names;
+  final Map<int, String> flavorTexts;
+
+  PokemonAbility({
+    required this.id,
+    required this.identifier,
+    required this.slot,
+    required this.isHidden,
+    required this.names,
+    required this.flavorTexts,
+  });
+
+  String getTranslation(String language) => localizedName(names, language, identifier);
+  String getDescription(String language) => localizedName(flavorTexts, language, '');
+
+  factory PokemonAbility.fromJson(Map<String, dynamic> json) {
+    final abilityJson = json['pokemon_v2_ability'] as Map<String, dynamic>;
+    final names = <int, String>{};
+    for (final n in (abilityJson['pokemon_v2_abilitynames'] as List? ?? [])) {
+      names[n['language_id'] as int] = n['name'] as String;
+    }
+    final flavorTexts = <int, String>{};
+    for (final f in (abilityJson['pokemon_v2_abilityflavortexts'] as List? ?? [])) {
+      flavorTexts[f['language_id'] as int] = (f['flavor_text'] as String).replaceAll('\n', ' ');
+    }
+    return PokemonAbility(
+      id: abilityJson['id'] as int,
+      identifier: abilityJson['name'] as String,
+      slot: json['slot'] as int? ?? 1,
+      isHidden: json['is_hidden'] as bool? ?? false,
+      names: names,
+      flavorTexts: flavorTexts,
+    );
+  }
+}
+
+/// Past ability entry: what ability a pokemon had in a previous generation.
+/// generation_id = last generation where this past ability was active.
+class PastAbility {
+  final int slot;
+  final int generationId;
+  final bool isHidden;
+  final PokemonAbility? ability; // null = no ability in that slot for that gen
+
+  PastAbility({
+    required this.slot,
+    required this.generationId,
+    required this.isHidden,
+    this.ability,
+  });
+
+  factory PastAbility.fromJson(Map<String, dynamic> json) {
+    PokemonAbility? ability;
+    if (json['pokemon_v2_ability'] != null) {
+      ability = PokemonAbility.fromJson(json);
+    }
+    return PastAbility(
+      slot: json['slot'] as int? ?? 1,
+      generationId: json['generation_id'] as int? ?? 0,
+      isHidden: json['is_hidden'] as bool? ?? false,
+      ability: ability,
+    );
+  }
+}
+
 class PokemonForm {
   final int id;
   final String identifier;
@@ -206,6 +276,10 @@ class Pokemon {
   final List<PokemonVariant> variants;
   final String? formName;
   final Map<int, String>? formNames;
+  final String? cryLatestUrl;
+  final String? cryLegacyUrl;
+  final List<PokemonAbility> abilities;
+  final List<PastAbility> pastAbilities;
 
   Pokemon({
     required this.id,
@@ -226,6 +300,10 @@ class Pokemon {
     this.variants = const [],
     this.formName,
     this.formNames,
+    this.cryLatestUrl,
+    this.cryLegacyUrl,
+    this.abilities = const [],
+    this.pastAbilities = const [],
   });
 
   String get officialArtworkUrl =>
@@ -240,6 +318,34 @@ class Pokemon {
   }
 
   int get totalStats => stats.values.fold(0, (a, b) => a + b);
+
+  /// Returns abilities for a specific generation, applying past ability overrides.
+  /// If generationId is null, returns current abilities.
+  List<PokemonAbility> abilitiesForGeneration(int? generationId) {
+    if (generationId == null || pastAbilities.isEmpty) return abilities;
+
+    final result = <PokemonAbility>[];
+    for (final current in abilities) {
+      // Find the most relevant past entry for this slot:
+      // past entries where generationId >= selected gen (the past was still active)
+      final pastEntry = pastAbilities
+          .where((p) => p.slot == current.slot && p.generationId >= generationId)
+          .toList();
+      if (pastEntry.isEmpty) {
+        // No past override → current ability is valid
+        result.add(current);
+      } else {
+        // Use the past entry with the lowest generationId >= selected
+        pastEntry.sort((a, b) => a.generationId.compareTo(b.generationId));
+        final past = pastEntry.first;
+        if (past.ability != null) {
+          result.add(past.ability!);
+        }
+        // If past.ability is null, this slot didn't exist → skip it
+      }
+    }
+    return result;
+  }
 
   String getTranslation(String language) {
     // Use regional form name if available
@@ -382,6 +488,30 @@ class Pokemon {
       }
     }
 
+    // Parse abilities
+    final abilities = <PokemonAbility>[];
+    for (final a in (json['pokemon_v2_pokemonabilities'] as List? ?? [])) {
+      if (a['pokemon_v2_ability'] != null) {
+        abilities.add(PokemonAbility.fromJson(a as Map<String, dynamic>));
+      }
+    }
+
+    // Parse past abilities
+    final pastAbilities = <PastAbility>[];
+    for (final p in (json['pokemon_v2_pokemonabilitypasts'] as List? ?? [])) {
+      pastAbilities.add(PastAbility.fromJson(p as Map<String, dynamic>));
+    }
+
+    // Parse cries
+    String? cryLatest;
+    String? cryLegacy;
+    final criesList = json['pokemon_v2_pokemoncries'] as List? ?? [];
+    if (criesList.isNotEmpty) {
+      final cries = criesList.first['cries'] as Map<String, dynamic>? ?? {};
+      cryLatest = cries['latest'] as String?;
+      cryLegacy = cries['legacy'] as String?;
+    }
+
     return Pokemon(
       id: json['id'] as int,
       identifier: json['name'] as String,
@@ -398,6 +528,10 @@ class Pokemon {
       spriteUrl: null,
       generationId: species?.generationId,
       variants: variants,
+      cryLatestUrl: cryLatest,
+      cryLegacyUrl: cryLegacy,
+      abilities: abilities,
+      pastAbilities: pastAbilities,
     );
   }
 }
